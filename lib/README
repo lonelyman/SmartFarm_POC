@@ -1,5 +1,0 @@
-This folder is for project-specific libraries (PlatformIO). Documentation has been centralized in the root README.
-
-See: [README.md](../README.md)
-
-Place library sources under `lib/<library-name>/src` with optional `library.json` for custom build options.

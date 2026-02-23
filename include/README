@@ -1,5 +1,0 @@
-This folder contains project header files. Documentation has been centralized in the root README.
-
-See: [README.md](../README.md)
-
-Use `include/` for public headers shared between modules. For architecture and development rules, read the root README.
