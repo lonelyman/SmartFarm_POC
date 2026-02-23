@@ -1,52 +1,28 @@
 #include <Arduino.h>
-#include "Config.h"
 #include "infrastructure/SharedState.h"
 #include "interfaces/Types.h"
 #include "drivers/Esp32Relay.h"
 
-// ======================================================
-//  EXTERN GLOBAL OBJECTS (สร้างตัวจริงใน main.cpp)
-// ======================================================
+// ตัวแปรจริง ถูกสร้างไว้ใน main.cpp
 extern SharedState state;
 extern Esp32Relay waterPump;
 extern Esp32Relay mistSystem;
 extern Esp32Relay airPump;
 
-// ======================================================
-//  COMMAND RATE LIMIT (กันกดรัว / กัน noise จาก serial)
-// ======================================================
+// กัน spam command
 static uint32_t lastCommandMs = 0;
 static const uint32_t CMD_COOLDOWN_MS = 200; // ms
 
-// ======================================================
-//  HELPER: sync สถานะรีเลย์กลับเข้า SharedState
-// ======================================================
-static void syncActuatorsToState()
+// helper: เคลียร์ manual overrides เป็น OFF ทั้งหมด
+static void clearManualOverrides()
 {
-    state.updateActuators(
-        waterPump.isOn(),
-        mistSystem.isOn(),
-        airPump.isOn());
+    ManualOverrides m;
+    m.wantPumpOn = false;
+    m.wantMistOn = false;
+    m.wantAirOn = false;
+    state.setManualOverrides(m);
 }
 
-// ======================================================
-//  HELPER: ใช้เฉพาะคำสั่งที่ต้องอยู่ในโหมด MANUAL เท่านั้น
-// ======================================================
-static bool ensureManualMode(const char *cmd, const SystemStatus &snap)
-{
-    if (snap.mode != SystemMode::MANUAL)
-    {
-        Serial.printf("⚠️ '%s' ใช้ได้เฉพาะโหมด MANUAL\n", cmd);
-        return false;
-    }
-    return true;
-}
-
-// ======================================================
-//  MAIN TASK: commandTask
-//  - อ่านคำสั่งจาก Serial (แบบบรรทัด เช่น "-auto", "-mist on")
-//  - แบ่งหมวดชัดเจน: เปลี่ยนโหมด / เคลียร์ / สั่งอุปกรณ์
-// ======================================================
 void commandTask(void *pvParameters)
 {
     Serial.println("ℹ️ Command Processor: Active");
@@ -55,22 +31,15 @@ void commandTask(void *pvParameters)
     {
         if (Serial.available() > 0)
         {
-            // ----------------------------------------------
-            // 1) อ่านทั้งบรรทัดจาก Serial
-            // ----------------------------------------------
             String input = Serial.readStringUntil('\n');
             input.trim();
 
-            // ถ้ากดแค่ Enter เปล่า ๆ ก็ข้ามไป
             if (input.length() == 0)
             {
                 vTaskDelay(pdMS_TO_TICKS(50));
                 continue;
             }
 
-            // ----------------------------------------------
-            // 2) กัน spam command ถี่เกินไป
-            // ----------------------------------------------
             uint32_t now = millis();
             if (now - lastCommandMs < CMD_COOLDOWN_MS)
             {
@@ -80,15 +49,12 @@ void commandTask(void *pvParameters)
             }
             lastCommandMs = now;
 
-            // ทำเป็นตัวพิมพ์เล็กทั้งหมด (จะได้ไม่สนใจ case)
             input.toLowerCase();
 
-            // snapshot ปัจจุบัน (ใช้เช็ค mode ฯลฯ)
             SystemStatus snap = state.getSnapshot();
 
-            // ==================================================
-            //  A) คำสั่งเปลี่ยนโหมด: -auto / -manual / -idle
-            // ==================================================
+            // ================== เปลี่ยนโหมด ==================
+
             if (input == "-auto" || input == "--a")
             {
                 if (snap.mode == SystemMode::AUTO)
@@ -98,6 +64,7 @@ void commandTask(void *pvParameters)
                 else
                 {
                     state.setMode(SystemMode::AUTO);
+                    clearManualOverrides(); // เคลียร์คำสั่ง manual เก่า
                     Serial.println("✅ MODE -> AUTO");
                 }
             }
@@ -111,11 +78,12 @@ void commandTask(void *pvParameters)
                 {
                     state.setMode(SystemMode::MANUAL);
 
-                    // เข้า MANUAL เคลียร์รีเลย์ก่อน (เริ่มจากพื้นสะอาด)
+                    // เข้า MANUAL เคลียร์รีเลย์ + overrides ก่อน (เริ่มจากพื้นสะอาด)
+                    clearManualOverrides();
                     waterPump.turnOff();
                     mistSystem.turnOff();
                     airPump.turnOff();
-                    syncActuatorsToState();
+                    state.updateActuators(false, false, false);
 
                     Serial.println("✅ MODE -> MANUAL (ALL OFF, waiting manual commands)");
                 }
@@ -130,124 +98,70 @@ void commandTask(void *pvParameters)
                 {
                     state.setMode(SystemMode::IDLE);
 
-                    // IDLE = ทุกอย่างดับ และต้องดับตลอด
+                    clearManualOverrides();
                     waterPump.turnOff();
                     mistSystem.turnOff();
                     airPump.turnOff();
-                    syncActuatorsToState();
+                    state.updateActuators(false, false, false);
 
                     Serial.println("✅ MODE -> IDLE (ALL OFF, no control)");
                 }
             }
 
-            // ==================================================
-            //  B) คำสั่งเคลียร์ทั้งหมด (STOP outputs แต่ไม่เปลี่ยน mode)
-            //      -clear
-            // ==================================================
+            // ================== คำสั่งเคลียร์ทั้งหมด ==================
+
             else if (input == "-clear")
             {
+                clearManualOverrides();
                 waterPump.turnOff();
                 mistSystem.turnOff();
                 airPump.turnOff();
-                syncActuatorsToState();
+                state.updateActuators(false, false, false);
                 Serial.println("🧹 CLEAR: ALL RELAYS OFF (mode unchanged)");
             }
 
-            // ==================================================
-            //  C) คำสั่ง MANUAL: สั่งรีเลย์รายตัว
-            //      -mist on/off
-            //      -pump on/off
-            //      -air  on/off
-            //      (ใช้ได้เฉพาะตอน mode = MANUAL)
-            // ==================================================
+            // ================== คำสั่ง MANUAL ต่ออุปกรณ์ ==================
+            // รูปแบบ:
+            //   -mist on  / -mist off
+            //   -pump on  / -pump off
+            //   -air on   / -air off
 
-            // ---------- หมอก ----------
-            else if (input == "-mist on")
+            else if (input == "-mist on" || input == "-mist off" ||
+                     input == "-pump on" || input == "-pump off" ||
+                     input == "-air on" || input == "-air off")
             {
-                if (!ensureManualMode("-mist on", snap))
+                if (snap.mode != SystemMode::MANUAL)
                 {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
+                    Serial.println("⚠️ manual relay commands work only in MANUAL mode");
                 }
                 else
                 {
-                    mistSystem.turnOn();
-                    syncActuatorsToState();
-                    Serial.println("✅ MIST -> ON (manual)");
-                }
-            }
-            else if (input == "-mist off")
-            {
-                if (!ensureManualMode("-mist off", snap))
-                {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
-                }
-                else
-                {
-                    mistSystem.turnOff();
-                    syncActuatorsToState();
-                    Serial.println("✅ MIST -> OFF (manual)");
-                }
-            }
+                    ManualOverrides m = state.getManualOverrides();
 
-            // ---------- ปั๊มน้ำ ----------
-            else if (input == "-pump on")
-            {
-                if (!ensureManualMode("-pump on", snap))
-                {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
-                }
-                else
-                {
-                    waterPump.turnOn();
-                    syncActuatorsToState();
-                    Serial.println("✅ PUMP -> ON (manual)");
-                }
-            }
-            else if (input == "-pump off")
-            {
-                if (!ensureManualMode("-pump off", snap))
-                {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
-                }
-                else
-                {
-                    waterPump.turnOff();
-                    syncActuatorsToState();
-                    Serial.println("✅ PUMP -> OFF (manual)");
+                    if (input.startsWith("-mist "))
+                    {
+                        bool on = input.endsWith("on");
+                        m.wantMistOn = on;
+                        Serial.printf("✅ MIST -> %s (override)\n", on ? "ON" : "OFF");
+                    }
+                    else if (input.startsWith("-pump "))
+                    {
+                        bool on = input.endsWith("on");
+                        m.wantPumpOn = on;
+                        Serial.printf("✅ PUMP -> %s (override)\n", on ? "ON" : "OFF");
+                    }
+                    else if (input.startsWith("-air "))
+                    {
+                        bool on = input.endsWith("on");
+                        m.wantAirOn = on;
+                        Serial.printf("✅ AIR -> %s (override)\n", on ? "ON" : "OFF");
+                    }
+
+                    state.setManualOverrides(m);
                 }
             }
 
-            // ---------- ปั๊มลม ----------
-            else if (input == "-air on")
-            {
-                if (!ensureManualMode("-air on", snap))
-                {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
-                }
-                else
-                {
-                    airPump.turnOn();
-                    syncActuatorsToState();
-                    Serial.println("✅ AIR -> ON (manual)");
-                }
-            }
-            else if (input == "-air off")
-            {
-                if (!ensureManualMode("-air off", snap))
-                {
-                    // ไม่ใช่โหมด MANUAL → ข้าม
-                }
-                else
-                {
-                    airPump.turnOff();
-                    syncActuatorsToState();
-                    Serial.println("✅ AIR -> OFF (manual)");
-                }
-            }
-
-            // ==================================================
-            //  D) ไม่รู้จักคำสั่ง
-            // ==================================================
+            // ================== ไม่รู้จักคำสั่ง ==================
             else
             {
                 Serial.print("⚠️ Unknown Command: ");

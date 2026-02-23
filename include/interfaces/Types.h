@@ -45,10 +45,11 @@ struct SystemStatus
 };
 
 // ===================== เวลาใน 1 วัน (สำหรับใช้กับ DS3231) =====================
-struct TimeOfDay {
-    uint8_t hour;    // 0-23
-    uint8_t minute;  // 0-59
-    uint8_t second;  // 0-59
+struct TimeOfDay
+{
+    uint8_t hour;   // 0-23
+    uint8_t minute; // 0-59
+    uint8_t second; // 0-59
 
     TimeOfDay() : hour(0), minute(0), second(0) {}
     TimeOfDay(uint8_t h, uint8_t m, uint8_t s)
@@ -56,8 +57,18 @@ struct TimeOfDay {
 };
 
 // helper: แปลงเป็น "นาทีของวัน" 0..1439
-inline uint16_t toMinutesOfDay(const TimeOfDay& t) {
+inline uint16_t toMinutesOfDay(const TimeOfDay &t)
+{
     return static_cast<uint16_t>(t.hour) * 60 + t.minute;
 }
+
+// ========== Manual override (สำหรับโหมด MANUAL) ==========
+// สั่งด้วยมือ: ความต้องการจากผู้ใช้ (Desired State)
+struct ManualOverrides
+{
+    bool wantPumpOn = false; // อยากให้ปั๊มน้ำ ON?
+    bool wantMistOn = false; // อยากให้หมอก ON?
+    bool wantAirOn  = false; // อยากให้ปั๊มลม ON?
+};
 
 #endif

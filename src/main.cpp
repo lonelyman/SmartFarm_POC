@@ -34,7 +34,7 @@ RtcDs3231Time rtcTime;
 AirPumpSchedule airSchedule;
 
 // สมองกลาง (ส่ง pointer ของ schedule เข้าไป)
-FarmManager manager(waterPump, mistSystem, airPump);
+FarmManager manager(waterPump, mistSystem, airPump, &airSchedule);
 
 // --- Task Forward Declarations ---
 void inputTask(void *pvParameters);
