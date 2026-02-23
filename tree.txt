@@ -1,0 +1,42 @@
+.
+├── README.md
+├── include
+│   ├── Config.h
+│   ├── README
+│   ├── application
+│   │   └── FarmManager.h
+│   ├── domain
+│   ├── drivers
+│   │   ├── Esp32Bh1750Light.h
+│   │   ├── Esp32FakeTemperature.h
+│   │   ├── Esp32Relay.h
+│   │   └── RtcDs3231Time.h
+│   ├── infrastructure
+│   │   ├── GlobalState.h
+│   │   └── SharedState.h
+│   └── interfaces
+│       ├── IActuator.h
+│       ├── ISensor.h
+│       └── Types.h
+├── lib
+│   └── README
+├── platformio.ini
+├── src
+│   ├── README.md
+│   ├── application
+│   ├── domain
+│   ├── drivers
+│   │   ├── Esp32Bh1750Light.cpp
+│   │   ├── Esp32FakeTemperature.cpp
+│   │   ├── Esp32Relay.cpp
+│   │   └── RtcDs3231Time.cpp
+│   ├── infrastructure
+│   ├── main.cpp
+│   └── tasks
+│       ├── CommandTask.cpp
+│       └── SensorTasks.cpp
+├── test
+│   └── README
+└── tree.txt
+
+15 directories, 25 files
