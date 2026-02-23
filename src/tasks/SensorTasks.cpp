@@ -6,7 +6,7 @@
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32Relay.h"
-#include "domain/AirPumpSchedule.h"
+#include "domain/AirPumpSchedule.h" // ยังเก็บไว้ เผื่อใช้ต่อกับ JSON
 
 // ====== Global externs จาก main.cpp ======
 extern SharedState state;
@@ -17,7 +17,7 @@ extern Esp32Relay mistSystem;
 extern Esp32Relay airPump;
 extern FarmManager manager;
 extern RtcDs3231Time rtcTime;
-extern AirPumpSchedule airSchedule; // ✅ ตารางเวลาปั๊มลมจาก JSON
+// extern AirPumpSchedule airSchedule; // ← ตอนนี้ยังไม่ใช้ใน manager.update
 
 // helper: แปลงนาทีของวัน → HH:MM แล้วพิมพ์ log
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
@@ -92,8 +92,9 @@ void controlTask(void *pvParameters)
 		}
 #endif
 
-		// 2) ดึง snapshot จาก SharedState
+		// 2) ดึง snapshot + manual overrides จาก SharedState
 		SystemStatus status = state.getSnapshot();
+		ManualOverrides manual = state.getManualOverrides();
 
 		// 3) DEBUG log สภาพรวม (เปิด/ปิดได้ด้วย DEBUG_CONTROL_LOG)
 #if DEBUG_CONTROL_LOG
@@ -105,8 +106,9 @@ void controlTask(void *pvParameters)
 			 airPump.isOn() ? 1 : 0);
 #endif
 
-		// 4) ส่งเข้า FarmManager พร้อมเวลา + ตารางเวลา
-		manager.update(status, minutesOfDay, airSchedule);
+		// 4) ส่งเข้า FarmManager พร้อมเวลา + manual overrides
+		//    (ตอนนี้ AUTO ยังใช้ตารางแบบ hardcode ใน FarmManager อยู่)
+		manager.update(status, minutesOfDay, manual);
 
 		// 5) sync สถานะ actuator กลับเข้า SharedState
 		state.updateActuators(

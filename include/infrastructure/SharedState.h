@@ -44,7 +44,7 @@ public:
         }
     }
 
-    // 🌡 ใหม่: เอาไว้รับค่าอุณหภูมิจาก Task/Driver
+    // 🌡 อัปเดตอุณหภูมิ
     void updateTemperature(float temp, bool tempValid, uint32_t ts)
     {
         if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
@@ -80,9 +80,42 @@ public:
         return temp;
     }
 
+    // ✅ ใหม่: สำหรับ MANUAL overrides
+    ManualOverrides getManualOverrides();
+    void setManualOverrides(const ManualOverrides &m);
+
 private:
     SystemStatus _status;
     SemaphoreHandle_t _mutex;
+
+    // ✅ เก็บ “สิ่งที่คนสั่ง” แยกจากสถานะรีเลย์จริง
+    ManualOverrides _manualOverrides;
 };
+
+// ================= inline implementation =================
+
+inline ManualOverrides SharedState::getManualOverrides()
+{
+    ManualOverrides temp;
+    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+    {
+        temp = _manualOverrides;
+        xSemaphoreGive(_mutex);
+    }
+    return temp;
+}
+
+inline void SharedState::setManualOverrides(const ManualOverrides &m)
+{
+    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+    {
+        _manualOverrides = m;
+        xSemaphoreGive(_mutex);
+    }
+    else
+    {
+        Serial.println("⚠️ SharedState: setManualOverrides Lock Timeout!");
+    }
+}
 
 #endif
