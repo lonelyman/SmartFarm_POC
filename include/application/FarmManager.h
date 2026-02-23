@@ -4,10 +4,12 @@
 #include <Arduino.h>
 #include "../interfaces/Types.h"
 #include "../interfaces/IActuator.h"
+#include "../domain/AirPumpSchedule.h"
+#include "../Config.h" // เพื่อใช้ DEBUG_CONTROL_LOG
 
 /**
  * สมองกลกลาง:
- * - AUTO  : ใช้ temp คุมหมอก + ใช้เวลา (minutesOfDay) คุมปั๊มลม
+ * - AUTO  : ใช้ temp คุมหมอก + ใช้เวลา (จาก schedule.json) คุมปั๊มลม
  * - MANUAL: สมองไม่สั่งอะไร รอคนสั่งเองผ่านคำสั่ง -mist/-pump/-air
  * - IDLE  : ปิดทุกอย่าง (โหมดพัก / ปลอดภัย)
  */
@@ -20,15 +22,18 @@ public:
 
     /**
      * ถูกเรียกจาก controlTask ทุก ๆ รอบ
-     * @param status      ภาพรวมสถานะจาก SharedState
-     * @param minutesOfDay นาทีของวัน 0..1439 (ใช้กับตารางเวลา)
+     * @param status        ภาพรวมสถานะจาก SharedState
+     * @param minutesOfDay  นาทีของวัน 0..1439
+     * @param schedule      ตารางเวลาปั๊มลมที่อ่านจาก schedule.json
      */
-    void update(const SystemStatus &status, uint16_t minutesOfDay)
+    void update(const SystemStatus &status,
+                uint16_t minutesOfDay,
+                const AirPumpSchedule &schedule)
     {
         switch (status.mode)
         {
         case SystemMode::AUTO:
-            runAutoLogic(status, minutesOfDay);
+            runAutoLogic(status, minutesOfDay, schedule);
             break;
 
         case SystemMode::MANUAL:
@@ -69,10 +74,12 @@ private:
     }
 
     // ===================== AUTO: รวม logic ทั้งหมด ====================
-    void runAutoLogic(const SystemStatus &status, uint16_t minutesOfDay)
+    void runAutoLogic(const SystemStatus &status,
+                      uint16_t minutesOfDay,
+                      const AirPumpSchedule &schedule)
     {
-        runMistByTemperature(status);   // ใช้ temp คุมหมอก
-        runAirBySchedule(minutesOfDay); // ใช้เวลา คุมปั๊มลม
+        runMistByTemperature(status);             // ใช้ temp คุมหมอก
+        runAirBySchedule(minutesOfDay, schedule); // ใช้ schedule.json คุมปั๊มลม
     }
 
     // ========== ส่วนที่ 1: หมอก ตาม “อุณหภูมิ” (Hysteresis) ==========
@@ -99,7 +106,7 @@ private:
         bool tooHot = (t >= TEMP_ON);
         bool coolDown = (t <= TEMP_OFF);
 
-        // ไม่พ่น log ทุก loop แล้ว → log เฉพาะตอน "เปลี่ยนสถานะ"
+        // ไม่พ่น log ทุก loop → log เฉพาะตอน "เปลี่ยนสถานะ"
         if (tooHot && !_mist.isOn())
         {
             _mist.turnOn();
@@ -113,62 +120,53 @@ private:
         // ถ้าอยู่ระหว่างกลาง (29 < t < 32) → ไม่เปลี่ยนอะไร / ไม่ log
     }
 
-    // ========== ส่วนที่ 2: ปั๊มลม ตาม “ตารางเวลา” ==========
+    // ========== ส่วนที่ 2: ปั๊มลม ตาม “ตารางเวลา” จาก JSON ==========
 
-    // helper เล็ก ๆ เช็คว่าอยู่ในช่วงเวลาหรือเปล่า
-    bool isWithinWindow(uint16_t minutes,
-                        uint16_t startMin,
-                        uint16_t endMin) const
+    void runAirBySchedule(uint16_t minutesOfDay,
+                          const AirPumpSchedule &schedule)
     {
-        // ตอนนี้รองรับเฉพาะช่วงปกติ start < end (ยังไม่รองรับช่วงข้ามเที่ยงคืน)
-        return (minutes >= startMin) && (minutes < endMin);
-    }
+        bool wantOn = false;
 
-    // ตารางเวลาปั๊มลมแบบ fix:
-    //  - ช่วง 1: 07:00–12:00
-    //  - ช่วง 2: 14:00–17:30
-    bool shouldAirOn(uint16_t minutesOfDay) const
-    {
-        // ช่วง 1: 07:00–12:00
-        if (isWithinWindow(minutesOfDay, 7 * 60, 12 * 60))
+        if (schedule.enabled)
         {
-            return true;
-        }
-        // ช่วง 2: 14:00–17:30
-        if (isWithinWindow(minutesOfDay, 14 * 60, 17 * 60 + 30))
-        {
-            return true;
-        }
-        return false;
-    }
+            for (uint8_t i = 0; i < schedule.windowCount; ++i)
+            {
+                const TimeWindow &w = schedule.windows[i];
 
-    void runAirBySchedule(uint16_t minutesOfDay)
-    {
-        bool wantOn = shouldAirOn(minutesOfDay);
+                // ตอนนี้รองรับช่วงปกติ ยังไม่รองรับช่วงข้ามเที่ยงคืน
+                if (minutesOfDay >= w.startMin &&
+                    minutesOfDay < w.endMin)
+                {
+                    wantOn = true;
+                    break;
+                }
+            }
+        }
+
         bool nowOn = _air.isOn();
 
-        // ถ้าจะดูละเอียดว่า "ตอนนี้อยู่ช่วงหรือยัง / nowOn เป็นอะไร" ให้เปิด DEBUG_AIR_LOG
-        // (ไปตั้ง #define DEBUG_AIR_LOG 1 ใน Config.h)
-#if DEBUG_AIR_LOG
+#if DEBUG_CONTROL_LOG
         uint16_t hh = minutesOfDay / 60;
         uint16_t mm = minutesOfDay % 60;
         Serial.printf(
-            "[AUTO][AIR] %02u:%02u wantOn=%d now=%d\n",
+            "[AUTO][AIR] %02u:%02u wantOn=%d now=%d windows=%u enabled=%d\n",
             hh, mm,
             wantOn ? 1 : 0,
-            nowOn ? 1 : 0);
+            nowOn ? 1 : 0,
+            (unsigned)schedule.windowCount,
+            schedule.enabled ? 1 : 0);
 #endif
 
         // เปลี่ยนสถานะเฉพาะตอนจำเป็น + log แค่ตอนเปลี่ยน
         if (wantOn && !nowOn)
         {
             _air.turnOn();
-            Serial.println("[AUTO][AIR] relay ON (inside schedule)");
+            Serial.println("[AUTO][AIR] relay ON (by JSON schedule)");
         }
         else if (!wantOn && nowOn)
         {
             _air.turnOff();
-            Serial.println("[AUTO][AIR] relay OFF (outside schedule)");
+            Serial.println("[AUTO][AIR] relay OFF (outside JSON schedule)");
         }
     }
 };

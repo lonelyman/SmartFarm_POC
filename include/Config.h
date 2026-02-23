@@ -55,4 +55,10 @@ constexpr uint16_t AIR_WINDOW1_END_MIN = 12 * 60;  // 12:00
 constexpr uint16_t AIR_WINDOW2_START_MIN = 14 * 60;    // 14:00
 constexpr uint16_t AIR_WINDOW2_END_MIN = 17 * 60 + 30; // 17:30
 
+// ====================== TASK INTERVALS (ms) ======================
+// กำหนดรอบการทำงานของแต่ละ Task ไว้ที่เดียว จะได้ปรับง่าย
+constexpr uint32_t INPUT_TASK_INTERVAL_MS   = 1000; // inputTask: อ่านเซนเซอร์/อัปเดต state
+constexpr uint32_t CONTROL_TASK_INTERVAL_MS = 1000; // controlTask: คิด logic/คุมรีเลย์
+constexpr uint32_t MAIN_LOOP_INTERVAL_MS    = 1000; // loop() หลัก (ตอนนี้แค่ sleep)
+
 #endif
