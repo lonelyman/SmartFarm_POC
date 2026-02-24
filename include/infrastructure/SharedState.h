@@ -92,30 +92,4 @@ private:
     ManualOverrides _manualOverrides;
 };
 
-// ================= inline implementation =================
-
-inline ManualOverrides SharedState::getManualOverrides()
-{
-    ManualOverrides temp;
-    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
-    {
-        temp = _manualOverrides;
-        xSemaphoreGive(_mutex);
-    }
-    return temp;
-}
-
-inline void SharedState::setManualOverrides(const ManualOverrides &m)
-{
-    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
-    {
-        _manualOverrides = m;
-        xSemaphoreGive(_mutex);
-    }
-    else
-    {
-        Serial.println("⚠️ SharedState: setManualOverrides Lock Timeout!");
-    }
-}
-
 #endif

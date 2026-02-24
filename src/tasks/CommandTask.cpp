@@ -1,25 +1,29 @@
 #include <Arduino.h>
+#include "Config.h"
 #include "infrastructure/SharedState.h"
 #include "interfaces/Types.h"
-#include "drivers/Esp32Relay.h"
 
 // ตัวแปรจริง ถูกสร้างไว้ใน main.cpp
 extern SharedState state;
-extern Esp32Relay waterPump;
-extern Esp32Relay mistSystem;
-extern Esp32Relay airPump;
 
 // กัน spam command
 static uint32_t lastCommandMs = 0;
 static const uint32_t CMD_COOLDOWN_MS = 200; // ms
 
-// helper: เคลียร์ manual overrides เป็น OFF ทั้งหมด
-static void clearManualOverrides()
+// helper: อัปเดต ManualOverrides ที่ SharedState
+static void applyManualChange(bool pumpOn, bool mistOn, bool airOn,
+                              bool setPump, bool setMist, bool setAir)
 {
-    ManualOverrides m;
-    m.wantPumpOn = false;
-    m.wantMistOn = false;
-    m.wantAirOn = false;
+    ManualOverrides m = state.getManualOverrides();
+
+    if (setPump)
+        m.wantPumpOn = pumpOn;
+    if (setMist)
+        m.wantMistOn = mistOn;
+    if (setAir)
+        m.wantAirOn = airOn;
+
+    m.isUpdated = true; // เผื่ออนาคตถ้าอยากใช้ flag นี้
     state.setManualOverrides(m);
 }
 
@@ -31,26 +35,29 @@ void commandTask(void *pvParameters)
     {
         if (Serial.available() > 0)
         {
+            // อ่านทั้งบรรทัดจาก Serial
             String input = Serial.readStringUntil('\n');
             input.trim();
 
             if (input.length() == 0)
             {
-                vTaskDelay(pdMS_TO_TICKS(50));
+                vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
                 continue;
             }
 
+            // กันกดรัวเกินไป
             uint32_t now = millis();
             if (now - lastCommandMs < CMD_COOLDOWN_MS)
             {
                 Serial.println("⏱ CMD ignored: too fast");
-                vTaskDelay(pdMS_TO_TICKS(50));
+                vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
                 continue;
             }
             lastCommandMs = now;
 
             input.toLowerCase();
 
+            // อ่าน snapshot เพื่อดู mode ปัจจุบัน
             SystemStatus snap = state.getSnapshot();
 
             // ================== เปลี่ยนโหมด ==================
@@ -64,7 +71,6 @@ void commandTask(void *pvParameters)
                 else
                 {
                     state.setMode(SystemMode::AUTO);
-                    clearManualOverrides(); // เคลียร์คำสั่ง manual เก่า
                     Serial.println("✅ MODE -> AUTO");
                 }
             }
@@ -76,16 +82,13 @@ void commandTask(void *pvParameters)
                 }
                 else
                 {
+                    // เข้า MANUAL เคลียร์ manual overrides ก่อน
+                    ManualOverrides m{};
+                    m.isUpdated = true;
+                    state.setManualOverrides(m);
+
                     state.setMode(SystemMode::MANUAL);
-
-                    // เข้า MANUAL เคลียร์รีเลย์ + overrides ก่อน (เริ่มจากพื้นสะอาด)
-                    clearManualOverrides();
-                    waterPump.turnOff();
-                    mistSystem.turnOff();
-                    airPump.turnOff();
-                    state.updateActuators(false, false, false);
-
-                    Serial.println("✅ MODE -> MANUAL (ALL OFF, waiting manual commands)");
+                    Serial.println("✅ MODE -> MANUAL (ALL OFF, wait manual)");
                 }
             }
             else if (input == "-idle" || input == "--i")
@@ -96,72 +99,103 @@ void commandTask(void *pvParameters)
                 }
                 else
                 {
+                    // IDLE = สมองบังคับปิดหมด
                     state.setMode(SystemMode::IDLE);
 
-                    clearManualOverrides();
-                    waterPump.turnOff();
-                    mistSystem.turnOff();
-                    airPump.turnOff();
-                    state.updateActuators(false, false, false);
+                    // เคลียร์ manual overrides ทิ้ง
+                    ManualOverrides m{};
+                    m.isUpdated = true;
+                    state.setManualOverrides(m);
 
                     Serial.println("✅ MODE -> IDLE (ALL OFF, no control)");
                 }
             }
 
-            // ================== คำสั่งเคลียร์ทั้งหมด ==================
+            // ================== CLEAR (ปิดทุกอย่าง แต่ไม่เปลี่ยนโหมด) ==================
 
             else if (input == "-clear")
             {
-                clearManualOverrides();
-                waterPump.turnOff();
-                mistSystem.turnOff();
-                airPump.turnOff();
-                state.updateActuators(false, false, false);
-                Serial.println("🧹 CLEAR: ALL RELAYS OFF (mode unchanged)");
+                ManualOverrides m{};
+                m.isUpdated = true;
+                state.setManualOverrides(m);
+                Serial.println("🧹 CLEAR: ALL MANUAL OVERRIDES OFF");
             }
 
             // ================== คำสั่ง MANUAL ต่ออุปกรณ์ ==================
-            // รูปแบบ:
-            //   -mist on  / -mist off
-            //   -pump on  / -pump off
-            //   -air on   / -air off
+            // ใช้ได้เฉพาะตอน mode = MANUAL
 
-            else if (input == "-mist on" || input == "-mist off" ||
-                     input == "-pump on" || input == "-pump off" ||
-                     input == "-air on" || input == "-air off")
+            else if (input == "-mist on")
             {
                 if (snap.mode != SystemMode::MANUAL)
                 {
-                    Serial.println("⚠️ manual relay commands work only in MANUAL mode");
+                    Serial.println("⚠️ '-mist on' ใช้ได้เฉพาะโหมด MANUAL");
                 }
                 else
                 {
-                    ManualOverrides m = state.getManualOverrides();
-
-                    if (input.startsWith("-mist "))
-                    {
-                        bool on = input.endsWith("on");
-                        m.wantMistOn = on;
-                        Serial.printf("✅ MIST -> %s (override)\n", on ? "ON" : "OFF");
-                    }
-                    else if (input.startsWith("-pump "))
-                    {
-                        bool on = input.endsWith("on");
-                        m.wantPumpOn = on;
-                        Serial.printf("✅ PUMP -> %s (override)\n", on ? "ON" : "OFF");
-                    }
-                    else if (input.startsWith("-air "))
-                    {
-                        bool on = input.endsWith("on");
-                        m.wantAirOn = on;
-                        Serial.printf("✅ AIR -> %s (override)\n", on ? "ON" : "OFF");
-                    }
-
-                    state.setManualOverrides(m);
+                    applyManualChange(false, true, false, false, true, false);
+                    Serial.println("✅ MIST -> ON (manual intent)");
                 }
             }
-
-            // ================== ไม่รู้จักคำสั่ง ==================
+            else if (input == "-mist off")
+            {
+                if (snap.mode != SystemMode::MANUAL)
+                {
+                    Serial.println("⚠️ '-mist off' ใช้ได้เฉพาะโหมด MANUAL");
+                }
+                else
+                {
+                    applyManualChange(false, false, false, false, true, false);
+                    Serial.println("✅ MIST -> OFF (manual intent)");
+                }
+            }
+            else if (input == "-pump on")
+            {
+                if (snap.mode != SystemMode::MANUAL)
+                {
+                    Serial.println("⚠️ '-pump on' ใช้ได้เฉพาะโหมด MANUAL");
+                }
+                else
+                {
+                    applyManualChange(true, false, false, true, false, false);
+                    Serial.println("✅ PUMP -> ON (manual intent)");
+                }
+            }
+            else if (input == "-pump off")
+            {
+                if (snap.mode != SystemMode::MANUAL)
+                {
+                    Serial.println("⚠️ '-pump off' ใช้ได้เฉพาะโหมด MANUAL");
+                }
+                else
+                {
+                    applyManualChange(false, false, false, true, false, false);
+                    Serial.println("✅ PUMP -> OFF (manual intent)");
+                }
+            }
+            else if (input == "-air on")
+            {
+                if (snap.mode != SystemMode::MANUAL)
+                {
+                    Serial.println("⚠️ '-air on' ใช้ได้เฉพาะโหมด MANUAL");
+                }
+                else
+                {
+                    applyManualChange(false, false, true, false, false, true);
+                    Serial.println("✅ AIR -> ON (manual intent)");
+                }
+            }
+            else if (input == "-air off")
+            {
+                if (snap.mode != SystemMode::MANUAL)
+                {
+                    Serial.println("⚠️ '-air off' ใช้ได้เฉพาะโหมด MANUAL");
+                }
+                else
+                {
+                    applyManualChange(false, false, false, false, false, true);
+                    Serial.println("✅ AIR -> OFF (manual intent)");
+                }
+            }
             else
             {
                 Serial.print("⚠️ Unknown Command: ");
@@ -169,6 +203,6 @@ void commandTask(void *pvParameters)
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
     }
 }

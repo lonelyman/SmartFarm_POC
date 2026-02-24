@@ -12,7 +12,6 @@ static bool parseTimeToMinutes(const char *str, uint16_t &minutes)
    int hh = -1;
    int mm = -1;
 
-   // รูปแบบที่ยอมรับ: "HH:MM" เช่น "07:00", "14:30"
    if (sscanf(str, "%d:%d", &hh, &mm) != 2)
       return false;
 
@@ -25,11 +24,10 @@ static bool parseTimeToMinutes(const char *str, uint16_t &minutes)
 
 bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
 {
-   // เคลียร์ค่าปัจจุบันก่อนเสมอ ป้องกัน state ค้าง
+   // เคลียร์ state ก่อน
    out.enabled = false;
    out.windowCount = 0;
 
-   // คาดว่า LittleFS.begin() ถูกเรียกไปแล้วใน setup()
    File f = LittleFS.open(path, "r");
    if (!f)
    {
@@ -37,8 +35,8 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       return false;
    }
 
-   // ใช้ JsonDocument (เวอร์ชันใหม่ แทน StaticJsonDocument<512>)
-   JsonDocument doc;
+   // JSON ไฟล์เล็ก ๆ ใช้ StaticJsonDocument ก็พอ
+   StaticJsonDocument<512> doc;
    DeserializationError err = deserializeJson(doc, f);
    f.close();
 
@@ -48,7 +46,6 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       return false;
    }
 
-   // ดึง object หลัก: air_pump
    JsonObject air = doc["air_pump"];
    if (air.isNull())
    {
@@ -56,11 +53,8 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       return false;
    }
 
-   // ตอนนี้เอา enabled มาเก็บไว้เฉย ๆ เผื่ออนาคตจะใช้ toggle
-   // ถ้า field หาย จะ default เป็น true
    out.enabled = air["enabled"] | true;
 
-   // windows ต้องเป็น array
    JsonArray arr = air["windows"].as<JsonArray>();
    if (arr.isNull())
    {
@@ -68,7 +62,6 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       return false;
    }
 
-   // ไล่โหลดแต่ละ window
    for (JsonObject win : arr)
    {
       if (out.windowCount >= AirPumpSchedule::MAX_WINDOWS)
@@ -83,7 +76,6 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       uint16_t s = 0;
       uint16_t e = 0;
 
-      // แปลง "HH:MM" → นาทีของวัน
       if (!parseTimeToMinutes(startStr, s) ||
           !parseTimeToMinutes(endStr, e))
       {
@@ -91,7 +83,6 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
          continue;
       }
 
-      // ตอนนี้รองรับเฉพาะช่วงปกติ (ไม่ข้ามเที่ยงคืน)
       if (s >= e)
       {
          Serial.println("⚠️ schedule: start >= end, skip one window");
@@ -109,8 +100,8 @@ bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
       return false;
    }
 
-   Serial.printf("✅ schedule loaded: %u window(s)\n",
-                 static_cast<unsigned>(out.windowCount));
-
+   Serial.printf("✅ schedule loaded: %u window(s), enabled=%d\n",
+                 (unsigned)out.windowCount,
+                 out.enabled ? 1 : 0);
    return true;
 }

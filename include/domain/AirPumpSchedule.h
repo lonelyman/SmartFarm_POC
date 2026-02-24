@@ -3,40 +3,21 @@
 
 #include <Arduino.h>
 
-// หนึ่งช่วงเวลาเปิดปั๊มลม เช่น 07:00–12:00
+// หนึ่งช่วงเวลา (นาทีของวัน)
 struct TimeWindow
 {
-   uint16_t startMin; // นาทีตั้งแต่ 00:00
-   uint16_t endMin;   // นาทีตั้งแต่ 00:00 (ต้อง > startMin)
+   uint16_t startMin; // รวมตอน start
+   uint16_t endMin;   // ไม่รวม end (เหมือน [start, end) )
 };
 
-// ตารางเวลาปั๊มลม ทั้งวัน
+// ตารางเวลาปั๊มลม
 struct AirPumpSchedule
 {
    static constexpr uint8_t MAX_WINDOWS = 8;
 
-   bool enabled;                    // เผื่ออนาคตอยากปิด scheduler ทั้งก้อน
-   TimeWindow windows[MAX_WINDOWS]; // fixed array
-   uint8_t windowCount;             // ใช้จริงกี่ช่วง
-
-   AirPumpSchedule()
-       : enabled(true), windowCount(0)
-   {
-   }
-
-   // ใช้ถามว่า นาทีของวันตอนนี้ อยู่ใน “ช่วงเปิดปั๊มลม” ใด ๆ ไหม
-   bool isWithinAnyWindow(uint16_t minutesOfDay) const
-   {
-      for (uint8_t i = 0; i < windowCount; ++i)
-      {
-         const TimeWindow &tw = windows[i];
-         if (minutesOfDay >= tw.startMin && minutesOfDay < tw.endMin)
-         {
-            return true;
-         }
-      }
-      return false;
-   }
+   bool enabled = false;    // true = ใช้ schedule นี้
+   uint8_t windowCount = 0; // จำนวน window ที่ใช้งานจริง
+   TimeWindow windows[MAX_WINDOWS];
 };
 
 #endif

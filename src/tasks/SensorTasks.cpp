@@ -6,7 +6,7 @@
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32Relay.h"
-#include "domain/AirPumpSchedule.h" // ยังเก็บไว้ เผื่อใช้ต่อกับ JSON
+#include "domain/AirPumpSchedule.h"
 
 // ====== Global externs จาก main.cpp ======
 extern SharedState state;
@@ -17,7 +17,6 @@ extern Esp32Relay mistSystem;
 extern Esp32Relay airPump;
 extern FarmManager manager;
 extern RtcDs3231Time rtcTime;
-// extern AirPumpSchedule airSchedule; // ← ตอนนี้ยังไม่ใช้ใน manager.update
 
 // helper: แปลงนาทีของวัน → HH:MM แล้วพิมพ์ log
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
@@ -36,8 +35,8 @@ void inputTask(void *pvParameters)
 		// 1) อ่านค่าแสง
 		SensorReading lux = lightSensor.read();
 
-		// 2) อ่าน temp ปลอมจาก driver (แทนการ fake ใน task)
-		SensorReading t = tempSensor.read(); // value + isValid
+		// 2) อ่าน temp ปลอมจาก driver
+		SensorReading t = tempSensor.read();
 		float tempValue = t.value;
 		bool tempIsValid = t.isValid;
 
@@ -66,6 +65,7 @@ void inputTask(void *pvParameters)
 void controlTask(void *pvParameters)
 {
 	Serial.println("ℹ️ ControlTask: Active");
+
 	while (true)
 	{
 		// 1) ดึงเวลาเป็นนาทีของวันจาก RTC หรือ FAKE
@@ -74,13 +74,13 @@ void controlTask(void *pvParameters)
 #ifdef USE_FAKE_TIME
 		minutesOfDay = FAKE_MINUTES_OF_DAY;
 #if DEBUG_TIME_LOG
-		logMinutesAsClock("TIME", minutesOfDay); // แสดงเป็น HH:MM
+		logMinutesAsClock("TIME", minutesOfDay);
 #endif
 #else
 		if (rtcTime.getMinutesOfDay(minutesOfDay))
 		{
 #if DEBUG_TIME_LOG
-			logMinutesAsClock("RTC", minutesOfDay); // แสดงเป็น HH:MM
+			logMinutesAsClock("RTC", minutesOfDay);
 #endif
 		}
 		else
@@ -92,7 +92,7 @@ void controlTask(void *pvParameters)
 		}
 #endif
 
-		// 2) ดึง snapshot + manual overrides จาก SharedState
+		// 2) ดึง snapshot จาก SharedState
 		SystemStatus status = state.getSnapshot();
 		ManualOverrides manual = state.getManualOverrides();
 
@@ -106,9 +106,8 @@ void controlTask(void *pvParameters)
 			 airPump.isOn() ? 1 : 0);
 #endif
 
-		// 4) ส่งเข้า FarmManager พร้อมเวลา + manual overrides
-		//    (ตอนนี้ AUTO ยังใช้ตารางแบบ hardcode ใน FarmManager อยู่)
-		manager.update(status, minutesOfDay, manual);
+		// 4) ส่งเข้า FarmManager พร้อมเวลา + manual
+		manager.update(status, manual, minutesOfDay);
 
 		// 5) sync สถานะ actuator กลับเข้า SharedState
 		state.updateActuators(
