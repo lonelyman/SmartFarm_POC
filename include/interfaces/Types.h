@@ -69,6 +69,7 @@ struct ManualOverrides
     bool wantPumpOn = false; // อยากให้ปั๊มน้ำ ON?
     bool wantMistOn = false; // อยากให้หมอก ON?
     bool wantAirOn  = false; // อยากให้ปั๊มลม ON?
+    bool isUpdated  = false; // ยังไม่ใช้ตอนนี้ แต่เผื่ออนาคต
 };
 
 #endif
