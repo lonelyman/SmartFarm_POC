@@ -6,6 +6,14 @@
 #include <freertos/semphr.h>
 #include "../interfaces/Types.h"
 
+struct TimeSetRequest
+{
+    bool pending = false;
+    uint8_t hour = 0;
+    uint8_t minute = 0;
+    uint8_t second = 0;
+};
+
 class SharedState
 {
 public:
@@ -16,6 +24,10 @@ public:
         {
             Serial.println("⚠️ ERROR: Mutex creation failed!");
         }
+
+        // init safe defaults
+        _manualOverrides = ManualOverrides{};
+        _timeSetReq = TimeSetRequest{};
     }
 
     void setMode(SystemMode mode)
@@ -80,9 +92,13 @@ public:
         return temp;
     }
 
-    // ✅ ใหม่: สำหรับ MANUAL overrides
+    // ✅ MANUAL overrides
     ManualOverrides getManualOverrides();
     void setManualOverrides(const ManualOverrides &m);
+
+    // ✅ Time set request (CommandTask -> SharedState -> ControlTask -> IClock)
+    void requestSetClockTime(uint8_t hour, uint8_t minute, uint8_t second);
+    bool consumeSetClockTime(TimeSetRequest &out);
 
 private:
     SystemStatus _status;
@@ -90,6 +106,9 @@ private:
 
     // ✅ เก็บ “สิ่งที่คนสั่ง” แยกจากสถานะรีเลย์จริง
     ManualOverrides _manualOverrides;
+
+    // ✅ เก็บคำขอตั้งเวลา (pending request)
+    TimeSetRequest _timeSetReq;
 };
 
 #endif

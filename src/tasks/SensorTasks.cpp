@@ -1,172 +1,169 @@
+// src/tasks/SensorTasks.cpp
+
 #include <Arduino.h>
+
 #include "Config.h"
-#include "application/FarmManager.h"
-#include "infrastructure/SharedState.h"
-#include "drivers/Esp32Bh1750Light.h"
-#include "drivers/Esp32FakeTemperature.h"
-#include "drivers/RtcDs3231Time.h"
-#include "drivers/Esp32Relay.h"
+#include "tasks/TaskEntrypoints.h"
+#include "infrastructure/SystemContext.h"
+#include "application/FarmManager.h"	 // FarmDecision
+#include "infrastructure/SharedState.h" // TimeSetRequest
 
-// ====== Global externs จาก main.cpp ======
-extern SharedState state;
-extern Esp32Bh1750Light lightSensor;
-extern Esp32FakeTemperature tempSensor;
-extern Esp32Relay waterPump;
-extern Esp32Relay mistSystem;
-extern Esp32Relay airPump;
-extern FarmManager manager;
-extern RtcDs3231Time rtcTime;
+// ---------- Helpers ----------
 
-// ====== helper: แปลงนาทีของวัน → HH:MM แล้วพิมพ์ log ======
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
 {
 	uint16_t hh = minutesOfDay / 60;
 	uint16_t mm = minutesOfDay % 60;
-	Serial.printf("[%s] %02u:%02u (minOfDay=%u)\n",
-					  tag, hh, mm, minutesOfDay);
+	Serial.printf("[%s] %02u:%02u (minOfDay=%u)\n", tag, hh, mm, minutesOfDay);
 }
 
-// ====== helper: decode mode จากค่าขาสวิตช์ A/B ======
-// mapping ที่เราตกลงกัน:
-//   A=0, B=0 → IDLE
-//   A=1, B=0 → AUTO
-//   A=0, B=1 → MANUAL
-//   A=1, B=1 → ผิดปกติ → กลับ IDLE เพื่อความปลอดภัย
-static SystemMode decodeModeFromPins(int a, int b)
+static void updateModeFromSource(SystemContext &ctx, SystemStatus &status)
 {
-	if (a == LOW && b == LOW)
-		return SystemMode::IDLE;
+	if (!ctx.modeSource)
+		return;
 
-	if (a == HIGH && b == LOW)
-		return SystemMode::AUTO;
-
-	if (a == LOW && b == HIGH)
-		return SystemMode::MANUAL;
-
-	return SystemMode::IDLE;
-}
-
-// ====== helper: อ่านสวิตช์ แล้ว sync เข้า SharedState.mode ======
-static void updateModeFromSwitch(SystemStatus &status)
-{
-	int a = digitalRead(PIN_SW_MODE_A);
-	int b = digitalRead(PIN_SW_MODE_B);
-
-	SystemMode newMode = decodeModeFromPins(a, b);
-
+	SystemMode newMode = ctx.modeSource->readMode();
 	if (newMode != status.mode)
 	{
-		// อัปเดตเข้า SharedState
-		state.setMode(newMode);
-		status.mode = newMode; // sync snapshot
+		ctx.state->setMode(newMode);
+		status.mode = newMode;
 
-		// log เฉพาะตอนเปลี่ยนโหมด
 		switch (newMode)
 		{
 		case SystemMode::AUTO:
-			Serial.println("🎚 MODE SWITCH → AUTO (จากสวิตช์หน้าเครื่อง)");
+			Serial.println("🎚 MODE SWITCH → AUTO");
 			break;
 		case SystemMode::MANUAL:
-			Serial.println("🎚 MODE SWITCH → MANUAL (จากสวิตช์หน้าเครื่อง)");
+			Serial.println("🎚 MODE SWITCH → MANUAL");
 			break;
 		case SystemMode::IDLE:
 		default:
-			Serial.println("🎚 MODE SWITCH → IDLE (ALL OFF)");
+			Serial.println("🎚 MODE SWITCH → IDLE");
 			break;
 		}
 	}
 }
 
-// ======================= InputTask =======================
+// ---------- Tasks ----------
+
 void inputTask(void *pvParameters)
 {
+	auto *ctx = static_cast<SystemContext *>(pvParameters);
+	if (ctx == nullptr || ctx->state == nullptr)
+	{
+		vTaskDelete(nullptr);
+		return;
+	}
+
+	Serial.println("ℹ️ InputTask: Active");
+
 	while (true)
 	{
-		// 1) อ่านค่าแสง
-		SensorReading lux = lightSensor.read();
-
-		// 2) อ่าน temp ปลอมจาก driver
-		SensorReading t = tempSensor.read();
-		float tempValue = t.value;
-		bool tempIsValid = t.isValid;
+		// Read sensors
+		SensorReading lux = ctx->lightSensor->read();
+		SensorReading t = ctx->tempSensor->read();
 
 		uint32_t now = millis();
 
-		// 3) อัปเดตค่าลง SharedState
-		state.updateSensors(lux.value, lux.isValid, 0.0f, false, now);
-		state.updateTemperature(tempValue, tempIsValid, now);
+		// Push to SharedState
+		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
+		ctx->state->updateTemperature(t.value, t.isValid, now);
 
-		// 4) LOG แยกตามหมวด
 #if DEBUG_BH1750_LOG
-		Serial.printf("[InputTask] BH1750 lux=%.1f\n", lux.value);
+		Serial.printf("[InputTask] BH1750 lux=%.1f valid=%d\n", lux.value, lux.isValid ? 1 : 0);
 #endif
-
 #if DEBUG_TEMP_LOG
-		Serial.printf("[InputTask] TEMP=%.1f C (valid=%d)\n",
-						  tempValue,
-						  tempIsValid ? 1 : 0);
+		Serial.printf("[InputTask] Temp=%.2f valid=%d\n", t.value, t.isValid ? 1 : 0);
 #endif
 
 		vTaskDelay(pdMS_TO_TICKS(INPUT_TASK_INTERVAL_MS));
 	}
 }
 
-// ======================= ControlTask =======================
 void controlTask(void *pvParameters)
 {
+	auto *ctx = static_cast<SystemContext *>(pvParameters);
+	if (ctx == nullptr || ctx->state == nullptr)
+	{
+		vTaskDelete(nullptr);
+		return;
+	}
+
 	Serial.println("ℹ️ ControlTask: Active");
 
 	while (true)
 	{
-		// 1) ดึงเวลาเป็นนาทีของวันจาก RTC หรือ FAKE
-		uint16_t minutesOfDay = 0;
-
-#ifdef USE_FAKE_TIME
-		minutesOfDay = FAKE_MINUTES_OF_DAY;
-#if DEBUG_TIME_LOG
-		logMinutesAsClock("TIME", minutesOfDay);
-#endif
-#else
-		if (rtcTime.getMinutesOfDay(minutesOfDay))
+		// 0) Apply pending time-set request (CommandTask -> SharedState -> ControlTask -> IClock)
+		if (ctx->clock)
 		{
-#if DEBUG_TIME_LOG
-			logMinutesAsClock("RTC", minutesOfDay);
-#endif
+			TimeSetRequest req{};
+			if (ctx->state->consumeSetClockTime(req))
+			{
+				if (ctx->clock->setTimeOfDay(req.hour, req.minute, req.second))
+				{
+					Serial.printf("[CLOCK] time set applied: %02u:%02u:%02u\n",
+									  req.hour, req.minute, req.second);
+				}
+				else
+				{
+					Serial.println("[CLOCK] failed to apply time set (clock unsupported?)");
+				}
+			}
 		}
-		else
+
+		// 1) Read time (IClock)
+		uint16_t minutesOfDay = 0;
+		if (!ctx->clock || !ctx->clock->getMinutesOfDay(minutesOfDay))
 		{
 			minutesOfDay = 0;
 #if DEBUG_TIME_LOG
-			Serial.println("[RTC] read failed, use 0");
+			Serial.println("[CLOCK] read failed, use 0");
 #endif
 		}
+#if DEBUG_TIME_LOG
+		logMinutesAsClock("TIME", minutesOfDay);
 #endif
 
-		// 2) ดึง snapshot จาก SharedState
-		SystemStatus status = state.getSnapshot();
-		ManualOverrides manual = state.getManualOverrides();
+		// 2) Read snapshot + manual overrides
+		SystemStatus status = ctx->state->getSnapshot();
+		ManualOverrides manual = ctx->state->getManualOverrides();
 
-		// 2.5) ให้สวิตช์หน้าเครื่องเป็นคนกำหนด mode จริง ๆ
-		updateModeFromSwitch(status);
+		// 3) Update mode from source (adapter)
+		updateModeFromSource(*ctx, status);
 
-		// 3) DEBUG log สภาพรวม (เปิด/ปิดได้ด้วย DEBUG_CONTROL_LOG)
 #if DEBUG_CONTROL_LOG
 		Serial.printf(
 			 "[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
 			 (int)status.mode,
-			 waterPump.isOn() ? 1 : 0,
-			 mistSystem.isOn() ? 1 : 0,
-			 airPump.isOn() ? 1 : 0);
+			 ctx->waterPump->isOn() ? 1 : 0,
+			 ctx->mistSystem->isOn() ? 1 : 0,
+			 ctx->airPump->isOn() ? 1 : 0);
 #endif
 
-		// 4) ส่งเข้า FarmManager พร้อมเวลา + manual
-		manager.update(status, manual, minutesOfDay);
+		// 4) Decide (Application logic)
+		FarmDecision decision = ctx->manager->update(status, manual, minutesOfDay);
 
-		// 5) sync สถานะ actuator กลับเข้า SharedState
-		state.updateActuators(
-			 waterPump.isOn(),
-			 mistSystem.isOn(),
-			 airPump.isOn());
+		// 5) Apply to hardware (ONLY place touching relays in control path)
+		if (decision.pumpOn)
+			ctx->waterPump->turnOn();
+		else
+			ctx->waterPump->turnOff();
+
+		if (decision.mistOn)
+			ctx->mistSystem->turnOn();
+		else
+			ctx->mistSystem->turnOff();
+
+		if (decision.airOn)
+			ctx->airPump->turnOn();
+		else
+			ctx->airPump->turnOff();
+
+		// 6) Sync actuator states back to SharedState
+		ctx->state->updateActuators(
+			 ctx->waterPump->isOn(),
+			 ctx->mistSystem->isOn(),
+			 ctx->airPump->isOn());
 
 		vTaskDelay(pdMS_TO_TICKS(CONTROL_TASK_INTERVAL_MS));
 	}

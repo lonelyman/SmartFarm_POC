@@ -14,17 +14,28 @@
 │   │   ├── Esp32Relay.h
 │   │   └── RtcDs3231Time.h
 │   ├── infrastructure
+│   │   ├── AppBoot.h
+│   │   ├── Esp32ModeSwitchSource.h
+│   │   ├── FakeClock.h
 │   │   ├── GlobalState.h
+│   │   ├── NetTimeSync.h
+│   │   ├── RtcClock.h
 │   │   ├── ScheduleStore.h
-│   │   └── SharedState.h
-│   └── interfaces
-│       ├── IActuator.h
-│       ├── ISensor.h
-│       └── Types.h
+│   │   ├── SharedState.h
+│   │   └── SystemContext.h
+│   ├── interfaces
+│   │   ├── IActuator.h
+│   │   ├── IClock.h
+│   │   ├── IModeSource.h
+│   │   ├── ISensor.h
+│   │   └── Types.h
+│   └── tasks
+│       └── TaskEntrypoints.h
 ├── lib
 ├── platformio.ini
 ├── src
 │   ├── application
+│   │   └── FarmManager.cpp
 │   ├── domain
 │   │   └── AirPumpSchedule.cpp
 │   ├── drivers
@@ -33,6 +44,9 @@
 │   │   ├── Esp32Relay.cpp
 │   │   └── RtcDs3231Time.cpp
 │   ├── infrastructure
+│   │   ├── AppBoot.cpp
+│   │   ├── Esp32ModeSwitchSource.cpp
+│   │   ├── NetTimeSync.cpp
 │   │   ├── ScheduleStore.cpp
 │   │   └── SharedState.cpp
 │   ├── main.cpp
@@ -43,4 +57,4 @@
 │   └── README
 └── tree.txt
 
-16 directories, 28 files
+17 directories, 41 files

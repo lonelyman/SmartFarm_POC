@@ -1,335 +1,288 @@
 # SmartFarm_POC
 
-โปรเจคต้นแบบ SmartFarm (ESP32 + FreeRTOS) — เอกสารทั้งหมดถูกรวบรวมไว้ที่ไฟล์ README หลักนี้
+โครงงานต้นแบบ SmartFarm (ESP32 + FreeRTOS) – เอกสารหลักอธิบายสถาปัตยกรรม, แนวทางพัฒนา, พฤติกรรม runtime, และวิธีขยายระบบ
 
-สรุป: README ภาพรวมสถาปัตยกรรม แนวปฏิบัติการพัฒนา วิธีขยายระบบ และพฤติกรรม runtime (โหมด, สวิตช์, schedule เวลา ฯลฯ)  
+สรุป: README นี้เก็บภาพรวมของโปรเจค, บันทึกกฎ/ข้อสังเกต, และทำหน้าที่เป็น single source of truth ต่อไฟล์ต่างๆ ที่เปลี่ยนไปหลังการปรับโค้ดใหม่
 
 ---
 
-## Quick Start
+## 🎬 Quick Start
 
-- ติดตั้ง PlatformIO แล้วรัน build:
+1. ติดตั้ง [PlatformIO](https://platformio.org) แล้วรัน build:
 
+   ```sh
    platformio run
+   ```
 
-- อัพโหลดโค้ดขึ้นบอร์ด (จาก VS Code / PlatformIO: กดปุ่ม ▶ Upload)
+2. อัปโหลดโค้ดขึ้นบอร์ด (จาก VS Code/PlatformIO: ▶ Upload)
+3. ถ้าแก้โครงสร้างโปรเจค อย่าลืมอัปเดต snapshot:
 
-- อัพเดต snapshot โครงสร้างโปรเจค:
-
+   ```sh
    tree > tree.txt
+   ```
+
+4. (ตัวเลือก) อัปโหลดระบบไฟล์ LittleFS หากใช้ `schedule.json`:
+
+   ```sh
+   pio run -t uploadfs
+   ```
 
 ---
 
-## รายการไฟล์และโฟลเดอร์สำคัญ
+## 📁 โครงสร้างโปรเจคสำคัญ
 
-- `include/`
-   - header (Interfaces, Types, Domain API, Application API, Infrastructure headers)
-- `src/`
-   - implementation (drivers, tasks, main)
-- `lib/`
-   - ไลบรารีเฉพาะโปรเจค (PlatformIO)
-- `test/`
-   - โค้ดสำหรับทดสอบ (PlatformIO Test Runner)
-- `platformio.ini`
-   - การตั้งค่า build / board / library
-- `tree.txt`
-   - snapshot ของโครงสร้างโปรเจค
+- `include/` – headers (Interfaces, Types, Domain APIs, Application APIs, Infrastructure)
+- `src/` – implementation (drivers, tasks, main, domain logic)
+- `lib/` – ไลบรารีเฉพาะโปรเจค (แพลตฟอร์ม PlatformIO)
+- `test/` – โค้ดสำหรับ unit test (PlatformIO Test Runner)
+- `platformio.ini` – การตั้งค่า build/board/library
+- `tree.txt` – snapshot โครงสร้างโปรเจค
 
 ---
 
-## สถาปัตยกรรม (6-Layer Summary)
+## 🏗️ สถาปัตยกรรม (6‑Layer + Adapters)
 
-เป้าหมาย: แยก Business Logic ออกจากฮาร์ดแวร์ เพื่อให้สามารถพอร์ต logic ไปยังแพลตฟอร์มอื่นได้ง่าย
+เป้าหมายหลักยังคงเดิม: **แยก business logic ออกจากฮาร์ดแวร์** เพื่อให้โค้ดพอร์ตง่ายและทดสอบได้
 
 เลเยอร์หลัก:
 
-- **Interfaces**: `include/interfaces`
-   - `Types.h`, `ISensor`, `IActuator` (Pure C++)
-- **Domain**: `include/domain`
-   - ตรรกะธุรกิจ (StateMachine, Rules) — _ยังว่างไว้รอเติม_
-- **Application**: `include/application`
-   - `FarmManager` ประสานการตัดสินใจระดับระบบ (AUTO / IDLE / MANUAL)
-- **Infrastructure**: `include/infrastructure`
-   - `GlobalState`, `SharedState` (thread-safety, snapshot, FreeRTOS mutex)
-- **Drivers**: `include/drivers`, `src/drivers`
-   - การเข้าถึงฮาร์ดแวร์ (BH1750, FakeTemp, Relay, RTC ฯลฯ)
-- **Tasks/Main**: `src/tasks`, `src/main.cpp`
-   - สร้าง FreeRTOS Task, อ่านเซนเซอร์, อัพเดต `SharedState`, อ่านสวิตช์, อ่าน Serial
+1. **Interfaces** – `include/interfaces`
+   - สัญญาระหว่างโมดูล เช่น `ISensor`, `IActuator`, `IClock`, `IModeSource`, และ `Types.h`
+   - ไม่มีการ include Arduino หรือ hardware ใดๆ
+2. **Domain** – `include/domain`
+   - โครงข้อมูลธุรกิจ (เช่น `AirPumpSchedule`, `TimeWindow`)
+   - ไม่มี logic ที่เกี่ยวกับฮาร์ดแวร์หรือ FreeRTOS
+3. **Application** – `include/application`
+   - นำ domain models มาตัดสินใจ (e.g. `FarmManager`)
+   - ฟังก์ชัน `update()` รับ `SystemStatus`, `ManualOverrides`, `minutesOfDay`
+   - **logic ทั้งหมด** อยู่ที่นี่และใน domain; upper layers ห้ามใช้ Arduino APIs
+4. **Infrastructure** – `include/infrastructure`
+   - เตรียม context, shared state, driver wrappers, ไฟล์ระบบ, network
+   - ตัวอย่าง: `SharedState` (mutex), `SystemContext`, `ScheduleStore`, `NetTimeSync`
+5. **Drivers** – `include/drivers` + `src/drivers`
+   - โค้ดติดต่อฮาร์ดแวร์ (BH1750, RTC, Relay, FakeTemperature ฯลฯ)
+   - `IClock` adapter สำหรับ RTC/NTP/fake time
+6. **Tasks / Main** – `src/tasks`, `src/main.cpp`
+   - สร้าง FreeRTOS tasks, เปลี่ยนเป็น `SystemContext` แล้ว kick off loop
+   - ใช้เฉพาะบนเลเยอร์นี้เรียก driver, infrastructure และ application
 
-กฎสำคัญ:
+**Adapters**: mode source, clock source, filesystem, network – เปลี่ยนเป็นโมดูลที่ฉีดผ่าน `SystemContext`
 
-- เลเยอร์บน (Interfaces/Domain/Application) **ห้าม**เรียกใช้ Arduino API หรือ hardware ตรง ๆ
-- Business Logic อยู่ที่ `Application`/`Domain` เท่านั้น
-- `SharedState` เป็น single source of truth  
-  ใช้ mutex/semaphore เพื่อกัน race ระหว่างแต่ละ Task
+### 🔧 กฎสำคัญ
 
----
-
-## Hardware & IO Overview
-
-### Board & Core
-
-- Board: ESP32 DOIT DEVKIT V1
-- Framework: Arduino + FreeRTOS (ผ่าน PlatformIO)
-
-### Sensors & Actuators (ปัจจุบัน)
-
-- Light Sensor: **BH1750**
-   - I2C: `SDA = 21`, `SCL = 22`
-- Temperature: **Esp32FakeTemperature**
-   - ยังไม่มีเซนเซอร์จริง ใช้ค่า fake ผ่าน driver นี้ (ชื่อ: "Main-Temp")
-- Relays (ใช้กับ SSR / โมดูลรีเลย์):
-
-   constexpr int PIN_RELAY_WATER_PUMP = 25; // ปั๊มน้ำ
-   constexpr int PIN_RELAY_MIST = 26; // ปั๊มหมอก
-   constexpr int PIN_RELAY_AIR_PUMP = 27; // ปั๊มลม
-
-Future Reserved:
-
-    constexpr int PIN_RELAY_FREE1 = 13;
-    constexpr int PIN_RELAY_FREE2 = 16;
-    constexpr int PIN_RELAY_FREE3 = 17;
-    constexpr int PIN_RELAY_FREE4 = 14;
-
-### Front Panel Switches (โหมดระบบ)
-
-ใช้สวิตช์หน้าเครื่อง 2 ตัว (ต่อเข้า GPIO พร้อม `INPUT_PULLUP`):
-
-    constexpr int PIN_SW_MODE_A = 18;
-    constexpr int PIN_SW_MODE_B = 19;
-
-Mapping (ปัจจุบัน):
-
-- A = HIGH, B = HIGH → `SystemMode::IDLE`
-- A = LOW, B = HIGH → `SystemMode::AUTO`
-- A = HIGH, B = LOW → `SystemMode::MANUAL`
-
-Debounce โดย `BUTTON_DEBOUNCE_MS = 50` ms
+- เลเยอร์บน (Interfaces/Domain/Application) **ห้าม**ใช้ Arduino API, FreeRTOS หรือฮาร์ดแวร์
+- **Business logic** อยู่เพียงที่ `Application`/`Domain`
+- `SharedState` เป็น single source of truth; ป้องกัน race ด้วย mutex
+- การอ่าน/เขียนรีเลย์กระทำเฉพาะใน `controlTask` หรือ driver
+- ถ้าต้องสั่งอะไรก็ตามจาก Serial → ไปผ่าน `SharedState` (manual overrides, clock requests)
+- ทดสอบ logic โดย mock `SystemContext`/`IClock`/`IModeSource` ได้เลย
 
 ---
 
-## Runtime Modes
+## 🔌 Hardware & IO Overview
 
-ระบบมี 3 โหมดหลัก (ประกาศใน `Types.h`):
+### คอนฟิกบนบอร์ด
 
-1. **IDLE (0)**
-   - ตั้งจากสวิตช์หน้าเครื่อง หรือ Serial (`-idle` / `--i`)
-   - ปิดทุกรีเลย์: น้ำ, หมอก, ปั๊มลม
-   - ใน `FarmManager` จะเรียก `forceAllOff()` ทุกครั้งในโหมดนี้
-   - ใช้เป็นโหมดพัก / ปลอดภัย / เทียบเท่า “ปิดตู้”
+- **บอร์ด**: ESP32 DOIT DEVKIT V1
+- **เฟรมเวิร์ก**: Arduino + FreeRTOS (PlatformIO)
 
-2. **AUTO (1)**
-   - ตั้งจากสวิตช์ หรือ Serial (`-auto` / `--a`)
-   - Logic ปัจจุบัน:
-      - ใช้ค่าอุณหภูมิ (จาก Fake Temperature) คุม **หมอก (MIST)**
-      - ใช้เวลา (Fake time / RTC + schedule) คุม **ปั๊มลม (AIR PUMP)**
-   - ปั๊มน้ำยังไม่มี auto-logic (รอ requirement รอบหน้า)
+### เลขพินสำคัญ (ดู `Config.h`)
 
-3. **MANUAL (2)**
-   - ตั้งจากสวิตช์ หรือ Serial (`-manual` / `--m`)
-   - เมื่อเข้า MANUAL:
-      - ระบบสั่งปิดรีเลย์ทุกตัว 1 ครั้ง (เริ่มจากพื้นสะอาด)
-   - จากนั้น **ผู้ใช้คุมเอง** ผ่าน Serial:
-      - `-mist on/off`
-      - `-pump on/off`
-      - `-air on/off`
-   - ในโหมดนี้ `FarmManager` จะ **ไม่สั่ง actuator ใด ๆ**  
-     (เพื่อไม่ให้ logic auto มาตีกับคนคุมเอง)
+```cpp
+// I2C: BH1750, RTC
+constexpr int PIN_I2C_SDA = 21;
+constexpr int PIN_I2C_SCL = 22;
 
----
+// รีเลย์
+constexpr int PIN_RELAY_WATER_PUMP = 25;
+constexpr int PIN_RELAY_MIST       = 26;
+constexpr int PIN_RELAY_AIR_PUMP   = 27;
 
-## Serial Command Cheatsheet
+// inputs อื่นๆ
+constexpr int PIN_ANALOG_EC        = 32; // placeholder
 
-Serial baud: **115200**
+// สวิตช์หน้าเครื่อง (mode switch & clear)
+constexpr int PIN_SW_MODE_A = 34;
+constexpr int PIN_SW_MODE_B = 35;
+constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
+```
 
-### Mode Commands
+### เซนเซอร์/แอกชูเอเตอร์
 
-- `-auto` หรือ `--a`  
-  → ตั้งโหมด **AUTO**
-- `-manual` หรือ `--m`  
-  → ตั้งโหมด **MANUAL** (และเคลียร์รีเลย์ทั้งหมดก่อน)
-- `-idle` หรือ `--i`  
-  → ตั้งโหมด **IDLE** (ปิดทุกอย่าง)
+- **Light**: BH1750 (I2C)
+- **Temperature**: `Esp32FakeTemperature` (ตอนนี้ยังเป็น fake)
+- **Relays**: ต่อย SSR / โมดูลรีเลย์ (ปั๊มน้ำ / หมอก / ปั๊มลม)
 
-### Manual Relay Control (ใช้ได้เฉพาะโหมด MANUAL)
+### สวิตช์เลือกโหมด
 
-- หมอก (Mist)
-   - `-mist on`
-   - `-mist off`
-- ปั๊มน้ำ (Water Pump)
-   - `-pump on`
-   - `-pump off`
-- ปั๊มลม (Air Pump)
-   - `-air on`
-   - `-air off`
+- A = HIGH, B = HIGH → `IDLE`
+- A = LOW, B = HIGH → `AUTO`
+- A = HIGH, B = LOW → `MANUAL`
 
-ถ้าใช้คำสั่ง on/off ในโหมดที่ไม่ใช่ MANUAL → จะขึ้นข้อความแจ้งเตือนใน Serial
-
-### Clear All Outputs
-
-- `-clear`
-   - ปิดทุกรีเลย์ (น้ำ/หมอก/ลม) แต่ **ไม่เปลี่ยนโหมด**
-   - ใช้กรณีอยากดับทุกอย่างทันที แต่ยังอยู่โหมด MANUAL ต่อไปได้
-
-ภายใน `CommandTask.cpp` มี cooldown:
-
-    static const uint32_t CMD_COOLDOWN_MS = 200; // กัน spam command รัวๆ
+(สวิตช์ถูกอ่านผ่าน `IModeSource` adapter; debounced 50 ms)
 
 ---
 
-## Time Source & Air Pump Schedule
+## ⚙️ Runtime Modes
+
+1. **IDLE**
+   - สวิตช์หรือ Serial (`-idle`/`--i`)
+   - รีเลย์ทุกตัวปิดและล้าง latch
+   - ใช้เป็นโหมดพัก/ปลอดภัย
+2. **AUTO**
+   - สวิตช์หรือ Serial (`-auto`/`--a`)
+   - **หมอก**: ควบคุมด้วยอุณหภูมิ (hysteresis 29–32°C)
+   - **ปั๊มลม**: ตาม schedule (JSON หรือ hard‑coded)
+   - ปั๊มน้ำยังไม่มี logic อัตโนมัติ
+3. **MANUAL**
+   - สวิตช์หรือ Serial (`-manual`/`--m`)
+   - เข้าทุกครั้งจะเคลียร์ค่า manual overrides และปิดรีเลย์ทั้งหมด
+   - ผู้ใช้สั่งผ่าน Serial (ดูด้านล่าง)
+   - `FarmManager` จะ **ไม่สั่ง actuator**; relay อยู่ภายใต้ manual overrides
+
+**Manual overrides** เป็น struct แยกต่างหากใน `SharedState` เพื่อกัน race ระหว่าง CommandTask และ ControlTask
+
+---
+
+## 🖥️ Serial Command Cheatsheet
+
+**Baud**: 115200
+
+### โหมด
+
+- `-auto` / `--a` → AUTO
+- `-manual` / `--m` → MANUAL (และ clear overrides)
+- `-idle` / `--i` → IDLE
+
+### ควบคุมรีเลย์ (ต้องอยู่ MANUAL)
+
+- `-mist on` / `-mist off`
+- `-pump on` / `-pump off`
+- `-air  on` / `-air  off`
+
+หากใช้คำสั่งในโหมดอื่น จะมี warning
+
+### คำสั่งเสริม
+
+- `-clear` ― ปิดทุกรีเลย์ **โดยไม่เปลี่ยนโหมด** (สั่ง temp หรือสวิตช์ CLEAR ก็ได้ในอนาคต)
+- `time=HH:MM[:SS]` ― ส่งคำขอให้ ControlTask ตั้งนาฬิกา (ผ่าน `SharedState`)
+- `-help` ― แสดง cheat sheet
+
+คำสั่งจะมี cooldown 200 ms เพื่อป้องกัน spam
+
+---
+
+## 🛠️ Manual Overrides & Clock Control
+
+- `SharedState` เก็บ `ManualOverrides` ที่มีฟิลด์ `wantPumpOn`, `wantMistOn`, `wantAirOn` และ flag `isUpdated`.
+- `CommandTask` แก้ไข struct นี้เมื่อผู้ใช้สั่ง on/off/clear
+- `ControlTask` จะดึงทั้งสถานะและ overrides แล้วส่งให้ `FarmManager`
+
+การตั้งเวลา:
+
+1. ผู้ใช้ป้อน `time=...`
+2. CommandTask parse แล้วเรียก `SharedState::requestSetClockTime(...)`
+3. ControlTask ในรอบถัดไป `consumeSetClockTime()` และส่งคำขอไปยัง `IClock`
+
+วิธีนี้รักษา clean separation: task หรือ logic อื่นไม่ต้องรู้จักกับ RTC/NTP
+
+---
+
+## 🕒 Time Source & Air Pump Schedule
 
 ### Time Source
 
-กำหนดที่ `Config.h`:
+- คอนฟิกใน `Config.h`:
+  - `#define USE_FAKE_TIME` (ถ้าไม่มี RTC หรือทดสอบ)
+  - `FAKE_MINUTES_OF_DAY` กำหนดค่า static
+- หาก **ไม่**ใช้ fake time:
+  - `AppBoot` จะเรียก `ctx.clock->begin()` (ปัจจุบันเป็น `RtcDs3231Time` adapter)
+  - `ControlTask` อ่านเวลา `getMinutesOfDay()` และเรียก `NetTimeSync` เมื่อจำเป็น
+  - `NetTimeSync::syncRtcFromNtp()` สามารถตั้ง RTC จากอินเทอร์เน็ต (ต้อง config Wi‑Fi/NTP ใน `Config.h`)
 
-    #define USE_FAKE_TIME
+### Air Pump Schedule
 
-- ถ้า **มี** `USE_FAKE_TIME`
-   - ระบบไม่อ่าน DS3231 แต่ใช้ค่า:
+ระบบรองรับทั้งแบบ hard‑coded และไฟล์ JSON เก็บใน LittleFS
 
-      constexpr uint16_t FAKE_MINUTES_OF_DAY = 7 \* 60 + 30; // 07:30
+**JSON ตัวอย่าง** (`data/schedule.json`):
 
-- ถ้า **เอา `USE_FAKE_TIME` ออก**
-   - ระบบจะเรียก `rtcTime.begin()` ใน `setup()`
-   - ใช้ `RtcDs3231Time` (ไลบรารี RTClib) อ่าน DS3231 จริง:
+```json
+{
+  "air_pump": {
+    "enabled": true,
+    "windows": [
+      { "start": "07:00", "end": "12:00" },
+      { "start": "14:00", "end": "17:30" }
+    ]
+  }
+}
+```
 
-      bool getMinutesOfDay(uint16_t &minutes);
-      bool getTimeOfDay(TimeOfDay &out);
+- `enabled` = feature flag
+- `windows` = รายการช่วงเวลา (`HH:MM` format)
 
-### Air Pump Schedule (Hardcode Version)
+`AppBoot::setup()` เมานต์ LittleFS และเรียก `loadAirScheduleFromFS()` (infrastructure) เพื่ออ่านไฟล์
 
-เวอร์ชันแรก: นิยามช่วงเวลาทำงานปั๊มลมใน `Config.h` เป็น “นาทีของวัน”:
-
-    // ช่วง 1: 07:00–12:00
-    constexpr uint16_t AIR_WINDOW1_START_MIN = 7 * 60;   // 07:00
-    constexpr uint16_t AIR_WINDOW1_END_MIN   = 12 * 60;  // 12:00
-
-    // ช่วง 2: 14:00–17:30
-    constexpr uint16_t AIR_WINDOW2_START_MIN = 14 * 60;      // 14:00
-    constexpr uint16_t AIR_WINDOW2_END_MIN   = 17 * 60 + 30; // 17:30
-
-ภายใน `FarmManager` จะมีฟังก์ชันประมาณนี้:
-
-    bool isWithinWindow(uint16_t minutes,
-                        uint16_t startMin,
-                        uint16_t endMin);
-
-    bool shouldAirOn(uint16_t minutesOfDay); // ใช้ WINDOW1 + WINDOW2
-
-จากนั้น `runAirBySchedule(minutesOfDay)` จะตัดสินใจเปิด/ปิดปั๊มลมตามเวลา ในโหมด AUTO เท่านั้น
-
-### Air Pump Schedule (JSON Design – อนาคต)
-
-มีแผนรองรับ config ผ่านไฟล์ `data/schedule.json` โดยใช้ LittleFS:
-
-    {
-      "air_pump": {
-        "enabled": true,
-        "windows": [
-          { "start": "07:00", "end": "12:00" },
-          { "start": "14:00", "end": "17:30" }
-        ]
-      }
-    }
-
-แนวคิด:
-
-- `enabled`
-   - ใช้เป็น feature flag เปิด/ปิดการอ่าน schedule จากไฟล์ โดยไม่ต้องแก้โค้ด
-- `windows[]`
-   - รายการช่วงเวลาที่ควรเปิดปั๊มลม (สามารถเพิ่ม/ลดได้โดยแก้ JSON)
-
-ตำแหน่งไฟล์ (แนะนำ):
-
-- สร้างไฟล์: `data/schedule.json`
-- อัปโหลดไฟล์ระบบไฟล์ขึ้นบอร์ด:
-
-   pio run -t uploadfs
-
-> ตอนนี้ logic ยังใช้ค่าจาก `Config.h` เป็นหลัก  
-> ส่วนอ่าน JSON จาก LittleFS จะเป็น step ถัดไป
+**Fallback**: หากไฟล์ไม่อยู่หรือ parse ล้มเหลว, สถานะ schedule จะถูกปิด (`enabled=false`).
 
 ---
 
-## Logging & Debug Flags
+## 📡 Network & NTP
 
-ควบคุมปริมาณ log ผ่าน `Config.h`:
+เมื่อมี Wi‑Fi credential ใน `Config.h`:
 
-    #define DEBUG_BH1750_LOG   1  // log ค่าแสงจาก BH1750 ใน InputTask
-    #define DEBUG_TEMP_LOG     0  // log ค่า temp (fake)
-    #define DEBUG_EC_LOG       0  // เผื่อสำหรับ EC sensor ในอนาคต
-    #define DEBUG_TIME_LOG     1  // log เวลา (HH:MM + minutesOfDay)
-    #define DEBUG_CONTROL_LOG  1  // log จาก ControlTask (mode + relay states)
-
-ตัวอย่างการใช้งาน:
-
-    #if DEBUG_BH1750_LOG
-    Serial.printf("[InputTask] BH1750 lux=%.1f\n", lux.value);
-    #endif
-
-    #if DEBUG_TIME_LOG
-    logMinutesAsClock("TIME", minutesOfDay);
-    #endif
-
-    #if DEBUG_CONTROL_LOG
-    Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
-                  (int)status.mode,
-                  waterPump.isOn() ? 1 : 0,
-                  mistSystem.isOn() ? 1 : 0,
-                  airPump.isOn() ? 1 : 0);
-    #endif
-
-แนวทาง:
-
-- log ที่ “ยิงทุก loop” → ควรอยู่ใต้ `#if DEBUG_*` เสมอ
-- log ที่ยิงแค่ตอน state เปลี่ยน เช่น:
-   - เปลี่ยนโหมด (AUTO/MANUAL/IDLE)
-   - เปิด/ปิดรีเลย์  
-     สามารถปล่อยถาวรได้ เพราะไม่ spam
+- `NetTimeSync::connectWifiIfNeeded()` จะเชื่อมต่อก่อน
+- `NetTimeSync::syncRtcFromNtp()` ใช้ NTP (`pool.ntp.org`) เพื่ออัปเดต RTC
+- ปัจจุบันเรียกจาก `main.cpp` หรือเมนูเฉพาะ
 
 ---
 
-## Runtime Flow (Task Overview)
+## 📝 Logging & Debug Flags
 
-ภาพรวมการทำงานระหว่าง Task หลัก ๆ:
+คุมปริมาณ log จาก `Config.h`:
 
-### InputTask
+```c
+#define DEBUG_BH1750_LOG   0
+#define DEBUG_TEMP_LOG     0
+#define DEBUG_EC_LOG       0
+#define DEBUG_TIME_LOG     1
+#define DEBUG_CONTROL_LOG  1
+```
 
-- เรียกทุก ~1s
-- ทำหน้าที่:
-   - อ่านค่า BH1750 ผ่าน `Esp32Bh1750Light`
-   - อ่านค่า temp ผ่าน `Esp32FakeTemperature`
-   - อัปเดตค่าลง `SharedState`:
-      - `state.updateSensors(...)`
-      - `state.updateTemperature(...)`
-   - อาจพิมพ์ log ตาม `DEBUG_BH1750_LOG` / `DEBUG_TEMP_LOG`
+เรียก `logMinutesAsClock()` ใน ControlTask เพื่อดูเวลาทุกวินาที
 
-### ControlTask
+🔧 แนะนำ:
 
-- เรียกทุก ~1s
-- ทำหน้าที่:
-   1. อ่านเวลาเป็น `minutesOfDay`
-      - FAKE (`FAKE_MINUTES_OF_DAY`) หรือ RTC (`RtcDs3231Time`)
-   2. ดึง snapshot จาก `SharedState`:
-      - `SystemStatus status = state.getSnapshot();`
-   3. เรียกสมองกล:
-      - `manager.update(status, minutesOfDay);`
-   4. sync สถานะรีเลย์กลับเข้า `SharedState`:
-      - `state.updateActuators(waterPump.isOn(), mistSystem.isOn(), airPump.isOn());`
-   5. พิมพ์ log ตาม `DEBUG_TIME_LOG` / `DEBUG_CONTROL_LOG`
-
-### CommandTask
-
-- รออ่าน Serial Input (`String input = Serial.readStringUntil('\n')`)
-- แปลงคำสั่งเป็น action:
-   - เปลี่ยนโหมด: `-auto`, `-manual`, `-idle`, `--a`, `--m`, `--i`
-   - manual relay: `-mist/pump/air on|off`
-   - clear: `-clear`
-- ใช้ `SharedState` และ object รีเลย์ร่วมกับ Task อื่น โดยมี cooldown กัน spam
+- log สถานะ/เวลา/relay เปลี่ยนปล่อยได้ถาวร
+- log ที่ loop เยอะควรอยู่ใต้ `#if DEBUG_*` เสมอ
 
 ---
 
-## Contact
+## 🔁 Runtime Flow (Task Overview)
+
+1. **AppBoot** ทำการ:
+   - initialises I2C, LittleFS, drivers, clock
+   - โหลด air schedule ถ้ามี
+   - กำหนดโหมดเริ่มต้นเป็น `IDLE`
+   - สตาร์ท tasks (input/control/command)
+2. **InputTask** (~1 s): อ่านเซนเซอร์ (lux, temp), อัปเดต `SharedState`
+3. **CommandTask** (~50 ms): รอรับ Serial, parse คำสั่ง, แก้ `SharedState` (mode, overrides, time request)
+4. **ControlTask** (~1 s):
+   - ประมวลคำขอตั้งเวลา → apply to `IClock`
+   - อ่านเวลา (`IClock`) หรือ fake
+   - ดึง snapshot + manual overrides
+   - นำ `IModeSource` อัปเดตโหมดถ้าเปลี่ยน
+   - เรียก `manager.update(status, manual, minutesOfDay)`
+   - เปลี่ยนสถานะรีเลย์ผ่าน `IActuator` objects
+   - ซิงก์สถานะรีเลย์กลับเข้า `SharedState`
+
+---
+
+## 📬 Contact
 
 SmartFarm_POC maintainers
+
+---
+
+> **หมายเหตุ:** README นี้อัปเดตตามการ refactor ล่าสุด ตรวจสอบให้แน่ใจว่า **กฎแยกเลเยอร์ยังคงปฏิบัติอยู่** และฟังก์ชันทั้งหมดใช้ `SystemContext`/`SharedState` อย่างถูกต้อง
+
