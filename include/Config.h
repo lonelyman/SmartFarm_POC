@@ -21,8 +21,8 @@ constexpr int PIN_ANALOG_EC = 32;
 constexpr int PIN_ANALOG_FREE = 33;
 
 // ====================== SWITCH INPUTS (ปุ่มหน้าตู้ / สวิตช์โหมด) ========
-constexpr int PIN_SW_MODE_A = 18; // 34;
-constexpr int PIN_SW_MODE_B = 19; // 35;
+constexpr int PIN_SW_MODE_A = 34;
+constexpr int PIN_SW_MODE_B = 35;
 constexpr int PIN_SW_CLEAR = 36;
 constexpr int PIN_SW_FREE = 39;
 
@@ -31,7 +31,7 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 
 // ====================== DEBUG LOG SWITCHES ======================
 // 1 = เปิด log, 0 = ปิด
-#define DEBUG_BH1750_LOG 1  // log จากเซนเซอร์แสง BH1750
+#define DEBUG_BH1750_LOG 0  // log จากเซนเซอร์แสง BH1750
 #define DEBUG_TEMP_LOG 0    // log จากอุณหภูมิ (fake ตอนนี้)
 #define DEBUG_EC_LOG 0      // log จาก EC (อนาคต)
 #define DEBUG_TIME_LOG 1    // log เวลา (HH:MM)
@@ -39,7 +39,7 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 
 // ====================== TIME SOURCE CONFIG ======================
 // ถ้ายังไม่มี RTC จริง ให้ใช้ fake time ไปก่อน
-#define USE_FAKE_TIME
+// #define USE_FAKE_TIME
 
 // ให้ระบบ "คิดว่า" ตอนนี้เป็นกี่นาทีของวัน (0..1439)
 // เช่น 07:30 = 7*60 + 30

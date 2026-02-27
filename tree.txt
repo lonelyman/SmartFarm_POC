@@ -33,7 +33,8 @@
 │   │   ├── Esp32Relay.cpp
 │   │   └── RtcDs3231Time.cpp
 │   ├── infrastructure
-│   │   └── ScheduleStore.cpp
+│   │   ├── ScheduleStore.cpp
+│   │   └── SharedState.cpp
 │   ├── main.cpp
 │   └── tasks
 │       ├── CommandTask.cpp
@@ -42,4 +43,4 @@
 │   └── README
 └── tree.txt
 
-16 directories, 27 files
+16 directories, 28 files

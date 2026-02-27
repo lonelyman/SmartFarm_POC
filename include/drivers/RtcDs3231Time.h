@@ -28,6 +28,8 @@ public:
    // ขอเป็น "นาทีของวัน" 0..1439 (ใช้กับตารางเวลา)
    bool getMinutesOfDay(uint16_t &minutes);
 
+   bool setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second = 0);
+
 private:
    RTC_DS3231 _rtc;
    bool _isOk;

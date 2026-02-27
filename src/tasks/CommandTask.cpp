@@ -2,15 +2,99 @@
 #include "Config.h"
 #include "infrastructure/SharedState.h"
 #include "interfaces/Types.h"
+#include "drivers/RtcDs3231Time.h"
 
-// ตัวแปรจริง ถูกสร้างไว้ใน main.cpp
+// ---- extern จาก main.cpp ----
 extern SharedState state;
+extern RtcDs3231Time rtcTime;
 
 // กัน spam command
 static uint32_t lastCommandMs = 0;
 static const uint32_t CMD_COOLDOWN_MS = 200; // ms
 
-// helper: อัปเดต ManualOverrides ที่ SharedState
+// ----------------------------------------------------
+// helper: ตั้งเวลา RTC จากคำสั่งที่มีคำว่า time=
+// ตัวอย่างที่รับได้:
+//   time=23:35
+//   TIME=23:35
+//   -time=23:35
+//   set time=23:35
+// ----------------------------------------------------
+static void setRtcFromCommand(String cmd)
+{
+    cmd.trim();
+    cmd.toLowerCase();
+
+    Serial.printf("[SETTIME RAW] '%s'\n", cmd.c_str());
+
+    int pos = cmd.indexOf("time=");
+    if (pos < 0)
+    {
+        Serial.println("[CMD] invalid TIME format (need time=HH:MM or time=HH:MM:SS)");
+        return;
+    }
+
+    // ตัดตั้งแต่หลังคำว่า "time=" ไปจนจบ
+    String payload = cmd.substring(pos + 5);
+    payload.trim(); // เผื่อมี space
+
+    int firstColon = payload.indexOf(':');
+    int secondColon = payload.indexOf(':', firstColon + 1);
+
+    if (firstColon < 0)
+    {
+        Serial.println("[CMD] TIME format error, need HH:MM");
+        return;
+    }
+
+    int h = 0, m = 0, s = 0;
+
+    if (secondColon < 0)
+    {
+        // รูปแบบ HH:MM
+        String sh = payload.substring(0, firstColon);
+        String sm = payload.substring(firstColon + 1);
+        h = sh.toInt();
+        m = sm.toInt();
+        s = 0;
+    }
+    else
+    {
+        // รูปแบบ HH:MM:SS
+        String sh = payload.substring(0, firstColon);
+        String sm = payload.substring(firstColon + 1, secondColon);
+        String ss = payload.substring(secondColon + 1);
+        h = sh.toInt();
+        m = sm.toInt();
+        s = ss.toInt();
+    }
+
+    if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59)
+    {
+        Serial.println("[CMD] TIME value out of range");
+        return;
+    }
+
+    if (!rtcTime.isOk())
+    {
+        Serial.println("[CMD] RTC not ready, cannot set time");
+        return;
+    }
+
+    bool ok = rtcTime.setTimeOfDay((uint8_t)h, (uint8_t)m, (uint8_t)s);
+    if (ok)
+    {
+        Serial.printf("[CMD] RTC time set to %02d:%02d:%02d\n", h, m, s);
+    }
+    else
+    {
+        Serial.println("[CMD] failed to set RTC time");
+    }
+}
+
+// ----------------------------------------------------
+// helper: อัปเดต ManualOverrides ใน SharedState
+// ----------------------------------------------------
 static void applyManualChange(bool pumpOn, bool mistOn, bool airOn,
                               bool setPump, bool setMist, bool setAir)
 {
@@ -23,7 +107,7 @@ static void applyManualChange(bool pumpOn, bool mistOn, bool airOn,
     if (setAir)
         m.wantAirOn = airOn;
 
-    m.isUpdated = true; // เผื่ออนาคตถ้าอยากใช้ flag นี้
+    m.isUpdated = true;
     state.setManualOverrides(m);
 }
 
@@ -35,7 +119,6 @@ void commandTask(void *pvParameters)
     {
         if (Serial.available() > 0)
         {
-            // อ่านทั้งบรรทัดจาก Serial
             String input = Serial.readStringUntil('\n');
             input.trim();
 
@@ -45,7 +128,6 @@ void commandTask(void *pvParameters)
                 continue;
             }
 
-            // กันกดรัวเกินไป
             uint32_t now = millis();
             if (now - lastCommandMs < CMD_COOLDOWN_MS)
             {
@@ -55,13 +137,14 @@ void commandTask(void *pvParameters)
             }
             lastCommandMs = now;
 
+            // debug raw
+            Serial.printf("[CMD RAW] '%s' (len=%d)\n", input.c_str(), input.length());
+
             input.toLowerCase();
 
-            // อ่าน snapshot เพื่อดู mode ปัจจุบัน
             SystemStatus snap = state.getSnapshot();
 
-            // ================== เปลี่ยนโหมด ==================
-
+            // ---------- เปลี่ยนโหมด ----------
             if (input == "-auto" || input == "--a")
             {
                 if (snap.mode == SystemMode::AUTO)
@@ -82,7 +165,6 @@ void commandTask(void *pvParameters)
                 }
                 else
                 {
-                    // เข้า MANUAL เคลียร์ manual overrides ก่อน
                     ManualOverrides m{};
                     m.isUpdated = true;
                     state.setManualOverrides(m);
@@ -99,10 +181,8 @@ void commandTask(void *pvParameters)
                 }
                 else
                 {
-                    // IDLE = สมองบังคับปิดหมด
                     state.setMode(SystemMode::IDLE);
 
-                    // เคลียร์ manual overrides ทิ้ง
                     ManualOverrides m{};
                     m.isUpdated = true;
                     state.setManualOverrides(m);
@@ -110,9 +190,12 @@ void commandTask(void *pvParameters)
                     Serial.println("✅ MODE -> IDLE (ALL OFF, no control)");
                 }
             }
-
-            // ================== CLEAR (ปิดทุกอย่าง แต่ไม่เปลี่ยนโหมด) ==================
-
+            else if (input.indexOf("time=") >= 0)
+            {
+                // คำสั่งตั้งเวลา RTC
+                setRtcFromCommand(input);
+            }
+            // ---------- CLEAR manual ----------
             else if (input == "-clear")
             {
                 ManualOverrides m{};
@@ -120,10 +203,7 @@ void commandTask(void *pvParameters)
                 state.setManualOverrides(m);
                 Serial.println("🧹 CLEAR: ALL MANUAL OVERRIDES OFF");
             }
-
-            // ================== คำสั่ง MANUAL ต่ออุปกรณ์ ==================
-            // ใช้ได้เฉพาะตอน mode = MANUAL
-
+            // ---------- manual control ----------
             else if (input == "-mist on")
             {
                 if (snap.mode != SystemMode::MANUAL)

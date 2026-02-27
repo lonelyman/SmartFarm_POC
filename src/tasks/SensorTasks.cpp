@@ -6,7 +6,6 @@
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32Relay.h"
-#include "domain/AirPumpSchedule.h"
 
 // ====== Global externs จาก main.cpp ======
 extern SharedState state;
@@ -18,13 +17,64 @@ extern Esp32Relay airPump;
 extern FarmManager manager;
 extern RtcDs3231Time rtcTime;
 
-// helper: แปลงนาทีของวัน → HH:MM แล้วพิมพ์ log
+// ====== helper: แปลงนาทีของวัน → HH:MM แล้วพิมพ์ log ======
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
 {
 	uint16_t hh = minutesOfDay / 60;
 	uint16_t mm = minutesOfDay % 60;
 	Serial.printf("[%s] %02u:%02u (minOfDay=%u)\n",
 					  tag, hh, mm, minutesOfDay);
+}
+
+// ====== helper: decode mode จากค่าขาสวิตช์ A/B ======
+// mapping ที่เราตกลงกัน:
+//   A=0, B=0 → IDLE
+//   A=1, B=0 → AUTO
+//   A=0, B=1 → MANUAL
+//   A=1, B=1 → ผิดปกติ → กลับ IDLE เพื่อความปลอดภัย
+static SystemMode decodeModeFromPins(int a, int b)
+{
+	if (a == LOW && b == LOW)
+		return SystemMode::IDLE;
+
+	if (a == HIGH && b == LOW)
+		return SystemMode::AUTO;
+
+	if (a == LOW && b == HIGH)
+		return SystemMode::MANUAL;
+
+	return SystemMode::IDLE;
+}
+
+// ====== helper: อ่านสวิตช์ แล้ว sync เข้า SharedState.mode ======
+static void updateModeFromSwitch(SystemStatus &status)
+{
+	int a = digitalRead(PIN_SW_MODE_A);
+	int b = digitalRead(PIN_SW_MODE_B);
+
+	SystemMode newMode = decodeModeFromPins(a, b);
+
+	if (newMode != status.mode)
+	{
+		// อัปเดตเข้า SharedState
+		state.setMode(newMode);
+		status.mode = newMode; // sync snapshot
+
+		// log เฉพาะตอนเปลี่ยนโหมด
+		switch (newMode)
+		{
+		case SystemMode::AUTO:
+			Serial.println("🎚 MODE SWITCH → AUTO (จากสวิตช์หน้าเครื่อง)");
+			break;
+		case SystemMode::MANUAL:
+			Serial.println("🎚 MODE SWITCH → MANUAL (จากสวิตช์หน้าเครื่อง)");
+			break;
+		case SystemMode::IDLE:
+		default:
+			Serial.println("🎚 MODE SWITCH → IDLE (ALL OFF)");
+			break;
+		}
+	}
 }
 
 // ======================= InputTask =======================
@@ -95,6 +145,9 @@ void controlTask(void *pvParameters)
 		// 2) ดึง snapshot จาก SharedState
 		SystemStatus status = state.getSnapshot();
 		ManualOverrides manual = state.getManualOverrides();
+
+		// 2.5) ให้สวิตช์หน้าเครื่องเป็นคนกำหนด mode จริง ๆ
+		updateModeFromSwitch(status);
 
 		// 3) DEBUG log สภาพรวม (เปิด/ปิดได้ด้วย DEBUG_CONTROL_LOG)
 #if DEBUG_CONTROL_LOG
