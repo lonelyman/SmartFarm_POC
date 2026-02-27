@@ -37,6 +37,15 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 #define DEBUG_TIME_LOG 1    // log เวลา (HH:MM)
 #define DEBUG_CONTROL_LOG 1 // log จาก ControlTask (mode/pump/mist/air)
 
+// ==== Network & Time Config ====
+#define WIFI_SSID "S21 Ultra ของ นิพน"
+#define WIFI_PASSWORD "ppvz7847"
+
+#define NTP_SERVER "pool.ntp.org"
+// เวลาไทย = UTC+7
+#define GMT_OFFSET_SEC (7 * 3600)
+#define DAYLIGHT_OFFSET_SEC 0
+
 // ====================== TIME SOURCE CONFIG ======================
 // ถ้ายังไม่มี RTC จริง ให้ใช้ fake time ไปก่อน
 // #define USE_FAKE_TIME
@@ -66,4 +75,5 @@ constexpr uint32_t INPUT_TASK_STACK = 4096;
 constexpr uint32_t CONTROL_TASK_STACK = 4096;
 constexpr uint32_t COMMAND_TASK_STACK = 4096;
 constexpr uint32_t LOOP_IDLE_MS = 1000;
+
 #endif

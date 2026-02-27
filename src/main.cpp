@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "infrastructure/SharedState.h"
 #include "infrastructure/ScheduleStore.h"
+#include "infrastructure/NetTimeSync.h"
 
 #include "application/FarmManager.h"
 
@@ -13,20 +14,8 @@
 #include "drivers/RtcDs3231Time.h"
 #include "domain/AirPumpSchedule.h"
 
-#include <WiFi.h>
-#include "time.h"
+// --- Global Objects (Composition Root) ---
 
-// ปรับตาม Wi-Fi คุณ
-const char *WIFI_SSID = "S21 Ultra ของ นิพน";
-const char *WIFI_PASSWORD = "ppvz7847";
-
-// ใช้ NTP server ทั่วไป
-const char *NTP_SERVER = "pool.ntp.org";
-// เวลาไทย = UTC+7
-const long GMT_OFFSET_SEC = 7 * 3600;
-const int DAYLIGHT_OFFSET_SEC = 0; // ไม่มี DST
-
-// --- Global Objects ---
 SharedState state;
 AirPumpSchedule airSchedule;
 
@@ -46,81 +35,14 @@ RtcDs3231Time rtcTime;
 FarmManager manager(waterPump, mistSystem, airPump, &airSchedule);
 
 // --- Task Forward Declarations ---
+// (body ของพวกนี้ควรไปอยู่ไฟล์ application/Tasks.cpp ถ้ายังไม่ย้ายเดี๋ยวค่อยทำรอบสอง)
 void inputTask(void *pvParameters);
 void controlTask(void *pvParameters);
 void commandTask(void *pvParameters);
 
-static void connectWifiIfNeeded()
-{
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        return;
-    }
-
-    Serial.println("[NET] Connecting WiFi...");
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    uint8_t retry = 0;
-    while (WiFi.status() != WL_CONNECTED && retry < 20)
-    {
-        delay(500);
-        Serial.print(".");
-        retry++;
-    }
-    Serial.println();
-
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.print("[NET] WiFi connected, IP=");
-        Serial.println(WiFi.localIP());
-    }
-    else
-    {
-        Serial.println("[NET] WiFi connect FAILED");
-    }
-}
-static void syncRtcFromNtp()
-{
-    connectWifiIfNeeded();
-    if (WiFi.status() != WL_CONNECTED)
-    {
-        Serial.println("[NTP] Cannot sync: WiFi not connected");
-        return;
-    }
-
-    // ตั้งค่า NTP
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo))
-    {
-        Serial.println("[NTP] Failed to obtain time");
-        return;
-    }
-
-    uint8_t h = timeinfo.tm_hour;
-    uint8_t m = timeinfo.tm_min;
-    uint8_t s = timeinfo.tm_sec;
-
-    Serial.printf("[NTP] Time from net = %02u:%02u:%02u\n", h, m, s);
-
-    if (!rtcTime.isOk())
-    {
-        Serial.println("[NTP] RTC not ready, cannot set");
-        return;
-    }
-
-    if (rtcTime.setTimeOfDay(h, m, s))
-    {
-        Serial.println("[NTP] RTC synced from internet");
-    }
-    else
-    {
-        Serial.println("[NTP] Failed to set RTC");
-    }
-}
-
+// -----------------------------------------------------------------------------
+// setup()
+// -----------------------------------------------------------------------------
 void setup()
 {
     Serial.begin(SERIAL_BAUD);
@@ -128,8 +50,11 @@ void setup()
 
     Serial.println();
     Serial.println("===== SmartFarm Booting... =====");
+
+    // 0) I2C Bus
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-    // 0) Filesystem + schedule
+
+    // 1) Filesystem + Air Schedule
     if (!LittleFS.begin())
     {
         Serial.println("⚠️ LittleFS mount failed, air schedule disabled");
@@ -147,18 +72,18 @@ void setup()
         }
     }
 
-    // 1) ตั้งค่า input ของสวิตช์โหมด
+    // 2) ตั้งค่า input ของสวิตช์โหมด
     pinMode(PIN_SW_MODE_A, INPUT);
     pinMode(PIN_SW_MODE_B, INPUT);
 
-    // 2) ตื่นตัวฮาร์ดแวร์ (drivers)
+    // 3) ตื่นตัวฮาร์ดแวร์ (drivers)
     lightSensor.begin();
     tempSensor.begin();
     waterPump.begin();
     mistSystem.begin();
     airPump.begin();
 
-    // 3) เริ่ม RTC DS3231 (ไม่ต้อง ifdef แล้ว ใช้จริงตลอด)
+    // 4) เริ่ม RTC DS3231
 #if DEBUG_TIME_LOG
     Serial.println("[MAIN] rtcTime.begin() ...");
 #endif
@@ -168,11 +93,14 @@ void setup()
         Serial.println("⚠️ MAIN: rtcTime.begin() failed");
 #endif
     }
-    syncRtcFromNtp();
-    // 3) โหมดเริ่มต้น → IDLE (ทุกอย่างดับ, ปลอดภัย)
+
+    // 5) Sync เวลา NTP → RTC (ใช้โมดูล infrastructure/NetTimeSync)
+    NetTimeSync::syncRtcFromNtp(rtcTime);
+
+    // 6) โหมดเริ่มต้น → IDLE (ทุกอย่างดับ, ปลอดภัย)
     state.setMode(SystemMode::IDLE);
 
-    // 4) สร้าง Tasks
+    // 7) สร้าง Tasks (application layer)
     xTaskCreatePinnedToCore(inputTask, "In", INPUT_TASK_STACK, NULL, 1, NULL, 1);
     xTaskCreatePinnedToCore(controlTask, "Ctrl", CONTROL_TASK_STACK, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(commandTask, "Cmd", COMMAND_TASK_STACK, NULL, 1, NULL, 1);
@@ -180,6 +108,9 @@ void setup()
     Serial.println("🚀 SmartFarm System: Ready and Linked.");
 }
 
+// -----------------------------------------------------------------------------
+// loop() : ไม่ใช้ logic ใด ๆ ปล่อยให้ FreeRTOS ทำงาน
+// -----------------------------------------------------------------------------
 void loop()
 {
     vTaskDelay(pdMS_TO_TICKS(LOOP_IDLE_MS));
