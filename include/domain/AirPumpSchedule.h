@@ -13,7 +13,7 @@ struct TimeWindow
 // ตารางเวลาปั๊มลม
 struct AirPumpSchedule
 {
-   static constexpr uint8_t MAX_WINDOWS = 8;
+   static constexpr uint8_t MAX_WINDOWS = 24;
 
    bool enabled = false;    // true = ใช้ schedule นี้
    uint8_t windowCount = 0; // จำนวน window ที่ใช้งานจริง
