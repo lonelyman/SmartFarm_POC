@@ -3,10 +3,14 @@
 #include <Arduino.h>
 
 #include "Config.h"
+
 #include "tasks/TaskEntrypoints.h"
+
 #include "infrastructure/SystemContext.h"
-#include "application/FarmManager.h"	 // FarmDecision
-#include "infrastructure/SharedState.h" // TimeSetRequest
+#include "infrastructure/SharedState.h"
+
+#include "application/FarmManager.h"
+#include "application/FarmModels.h"
 
 // ---------- Helpers ----------
 
@@ -128,7 +132,7 @@ void controlTask(void *pvParameters)
 		SystemStatus status = ctx->state->getSnapshot();
 		ManualOverrides manual = ctx->state->getManualOverrides();
 
-		// 3) Update mode from source (adapter)
+		// 3) Update mode from source (adapter) -> sync to SharedState (inside function)
 		updateModeFromSource(*ctx, status);
 
 #if DEBUG_CONTROL_LOG
@@ -140,10 +144,20 @@ void controlTask(void *pvParameters)
 			 ctx->airPump->isOn() ? 1 : 0);
 #endif
 
-		// 4) Decide (Application logic)
-		FarmDecision decision = ctx->manager->update(status, manual, minutesOfDay);
+		// 4) Map to FarmInput (pure application model)
+		FarmInput in{};
+		in.mode = status.mode;
+		in.minutesOfDay = minutesOfDay;
+		in.manual = manual;
 
-		// 5) Apply to hardware (ONLY place touching relays in control path)
+		// ใช้เฉพาะข้อมูลที่ logic ต้องใช้ (ลด coupling)
+		in.temperatureC = status.temperature.value;
+		in.temperatureValid = status.temperature.isValid;
+
+		// 5) Decide (Application logic, pure)
+		FarmDecision decision = ctx->manager->update(in);
+
+		// 6) Apply to hardware (ONLY place touching relays in control path)
 		if (decision.pumpOn)
 			ctx->waterPump->turnOn();
 		else
@@ -159,7 +173,7 @@ void controlTask(void *pvParameters)
 		else
 			ctx->airPump->turnOff();
 
-		// 6) Sync actuator states back to SharedState
+		// 7) Sync actuator states back to SharedState
 		ctx->state->updateActuators(
 			 ctx->waterPump->isOn(),
 			 ctx->mistSystem->isOn(),

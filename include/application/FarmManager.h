@@ -1,37 +1,34 @@
 #ifndef FARM_MANAGER_H
 #define FARM_MANAGER_H
 
-#include "../interfaces/Types.h"
 #include "../domain/AirPumpSchedule.h"
+#include "FarmModels.h"
 
-struct FarmDecision
-{
-    bool pumpOn = false;
-    bool mistOn = false;
-    bool airOn = false;
-};
-
+/**
+ * สมองกลกลาง (pure application logic)
+ * - ไม่แตะ Arduino/FreeRTOS/Relay/SharedState
+ * - รับ FarmInput และคืน FarmDecision
+ */
 class FarmManager
 {
 public:
     explicit FarmManager(const AirPumpSchedule *schedule);
 
-    FarmDecision update(const SystemStatus &status,
-                        const ManualOverrides &manual,
-                        uint16_t minutesOfDay);
+    FarmDecision update(const FarmInput &in);
 
 private:
     const AirPumpSchedule *_schedule = nullptr;
 
+    // hysteresis latch (internal memory)
     bool _pumpLatched = false;
     bool _mistLatched = false;
     bool _airLatched = false;
 
 private:
     FarmDecision applyManual(const ManualOverrides &m);
-    FarmDecision applyAuto(const SystemStatus &status, uint16_t minutesOfDay);
+    FarmDecision applyAuto(const FarmInput &in);
 
-    bool decideMistByTemp(const SystemStatus &status);
+    bool decideMistByTemp(float tempC, bool valid);
     bool decideAirBySchedule(uint16_t minutesOfDay) const;
 };
 

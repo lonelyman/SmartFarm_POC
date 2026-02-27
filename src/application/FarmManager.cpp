@@ -3,15 +3,14 @@
 FarmManager::FarmManager(const AirPumpSchedule *schedule)
     : _schedule(schedule) {}
 
-FarmDecision FarmManager::update(const SystemStatus &status,
-                                 const ManualOverrides &manual,
-                                 uint16_t minutesOfDay)
+FarmDecision FarmManager::update(const FarmInput &in)
 {
    FarmDecision out{};
 
-   switch (status.mode)
+   switch (in.mode)
    {
    case SystemMode::IDLE:
+      // ปิดหมด + reset latch ให้ deterministic
       out.pumpOn = false;
       out.mistOn = false;
       out.airOn = false;
@@ -22,11 +21,11 @@ FarmDecision FarmManager::update(const SystemStatus &status,
       break;
 
    case SystemMode::MANUAL:
-      out = applyManual(manual);
+      out = applyManual(in.manual);
       break;
 
    case SystemMode::AUTO:
-      out = applyAuto(status, minutesOfDay);
+      out = applyAuto(in);
       break;
    }
 
@@ -47,31 +46,34 @@ FarmDecision FarmManager::applyManual(const ManualOverrides &m)
    return out;
 }
 
-FarmDecision FarmManager::applyAuto(const SystemStatus &status, uint16_t minutesOfDay)
+FarmDecision FarmManager::applyAuto(const FarmInput &in)
 {
    FarmDecision out{};
-   out.pumpOn = false; // ยังไม่มี auto น้ำ
-   out.mistOn = decideMistByTemp(status);
-   out.airOn = decideAirBySchedule(minutesOfDay);
+
+   // ปั๊มน้ำยังไม่มี auto logic
+   out.pumpOn = false;
+
+   out.mistOn = decideMistByTemp(in.temperatureC, in.temperatureValid);
+   out.airOn = decideAirBySchedule(in.minutesOfDay);
+
    return out;
 }
 
-bool FarmManager::decideMistByTemp(const SystemStatus &status)
+bool FarmManager::decideMistByTemp(float tempC, bool valid)
 {
-   if (!status.temperature.isValid)
+   if (!valid)
       return false;
 
+   // hysteresis thresholds (ถ้าคุณมี config ของจริง ค่อยย้ายไป Config.h ใน Milestone 3)
    constexpr float TEMP_ON = 32.0f;
    constexpr float TEMP_OFF = 29.0f;
 
-   float t = status.temperature.value;
-
-   if (t >= TEMP_ON)
+   if (tempC >= TEMP_ON)
       return true;
-   if (t <= TEMP_OFF)
+   if (tempC <= TEMP_OFF)
       return false;
 
-   return _mistLatched; // hysteresis
+   return _mistLatched;
 }
 
 bool FarmManager::decideAirBySchedule(uint16_t minutesOfDay) const
