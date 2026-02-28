@@ -1,7 +1,9 @@
 #pragma once
 
-#include "interfaces/IModeSource.h"
 #include "infrastructure/SharedState.h"
+#include "interfaces/INetwork.h"
+
+#include "interfaces/IModeSource.h"
 #include "interfaces/IClock.h"
 
 #include "domain/AirPumpSchedule.h"
@@ -9,7 +11,6 @@
 #include "drivers/Esp32Bh1750Light.h"
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/Esp32Relay.h"
-#include "drivers/RtcDs3231Time.h"
 
 #include "application/FarmManager.h"
 
@@ -29,8 +30,10 @@ struct SystemContext
    Esp32Relay *mistSystem;
    Esp32Relay *airPump;
 
-      // Clock abstraction
+   // Clock abstraction
    IClock *clock;
+
+   INetwork *network;
 
    // Mode source
    IModeSource *modeSource;

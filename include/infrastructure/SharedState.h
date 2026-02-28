@@ -14,6 +14,20 @@ struct TimeSetRequest
     uint8_t second = 0;
 };
 
+enum class NetCmdType : uint8_t
+{
+    None = 0,
+    NetOn,
+    NetOff,
+    SyncNtp,
+};
+
+struct NetCommand
+{
+    bool pending = false;
+    NetCmdType type = NetCmdType::None;
+};
+
 class SharedState
 {
 public:
@@ -100,6 +114,11 @@ public:
     void requestSetClockTime(uint8_t hour, uint8_t minute, uint8_t second);
     bool consumeSetClockTime(TimeSetRequest &out);
 
+    void requestNetOn();
+    void requestNetOff();
+    void requestSyncNtp();
+    bool consumeNetCommand(NetCommand &out);
+
 private:
     SystemStatus _status;
     SemaphoreHandle_t _mutex;
@@ -109,6 +128,8 @@ private:
 
     // ✅ เก็บคำขอตั้งเวลา (pending request)
     TimeSetRequest _timeSetReq;
+
+    NetCommand _netCmd;
 };
 
 #endif

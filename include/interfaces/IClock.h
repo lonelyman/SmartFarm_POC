@@ -13,4 +13,5 @@ public:
    virtual bool getTimeOfDay(TimeOfDay &out) = 0;
 
    virtual bool setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second) = 0;
+   virtual bool syncFromNetwork() = 0;
 };

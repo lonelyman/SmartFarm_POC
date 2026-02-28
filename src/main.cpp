@@ -12,6 +12,7 @@
 #include "application/FarmManager.h"
 
 #include "infrastructure/Esp32ModeSwitchSource.h"
+#include "infrastructure/Esp32WiFiNetwork.h"
 #include "infrastructure/SharedState.h"
 #include "infrastructure/SystemContext.h"
 #include "infrastructure/AppBoot.h"
@@ -24,7 +25,7 @@ SharedState state;
 AirPumpSchedule airSchedule;
 
 Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
-
+Esp32WiFiNetwork wifiNet(WIFI_SSID, WIFI_PASSWORD);
 // Sensors
 Esp32Bh1750Light lightSensor("Main-Light");
 Esp32FakeTemperature tempSensor("Main-Temp", 30.0f);
@@ -56,6 +57,7 @@ static SystemContext ctx{
     &mistSystem,
     &airPump,
     &sysClock,
+    &wifiNet,
     &modeSource,
     &manager,
 };
