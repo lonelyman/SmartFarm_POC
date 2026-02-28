@@ -11,5 +11,5 @@ namespace NetTimeSync
    void connectWifiIfNeeded();
 
    // sync เวลา NTP → RTC DS3231
-   void syncRtcFromNtp(RtcDs3231Time &rtc);
+   bool syncRtcFromNtp(RtcDs3231Time &rtc);
 }

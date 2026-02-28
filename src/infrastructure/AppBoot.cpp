@@ -7,7 +7,6 @@
 #include "Config.h"
 #include "tasks/TaskEntrypoints.h"
 #include "infrastructure/ScheduleStore.h"
-#include "infrastructure/NetTimeSync.h"
 
 namespace
 {
@@ -66,6 +65,16 @@ namespace
       ctx.airPump->begin();
    }
 
+   static void initNetwork(SystemContext &ctx)
+   {
+      if (!ctx.network)
+      {
+         Serial.println("⚠️ network is null (wifi disabled)");
+         return;
+      }
+      ctx.network->begin();
+   }
+
    void initClock(SystemContext &ctx)
    {
       if (ctx.clock == nullptr)
@@ -90,6 +99,7 @@ namespace
       xTaskCreatePinnedToCore(inputTask, "In", INPUT_TASK_STACK, &ctx, 1, nullptr, 1);
       xTaskCreatePinnedToCore(controlTask, "Ctrl", CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
       xTaskCreatePinnedToCore(commandTask, "Cmd", COMMAND_TASK_STACK, &ctx, 1, nullptr, 1);
+      xTaskCreatePinnedToCore(networkTask, "Net", 4096, &ctx, 1, nullptr, 0);
    }
 }
 
@@ -105,6 +115,7 @@ void AppBoot::setup(SystemContext &ctx)
 
    initDrivers(ctx);
    initClock(ctx);
+   initNetwork(ctx);
    setInitialSafeState(ctx);
    startTasks(ctx);
 

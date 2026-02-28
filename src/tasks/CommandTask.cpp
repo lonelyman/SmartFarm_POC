@@ -107,6 +107,41 @@ static void printHelp()
     Serial.println("  time=HH:MM[:SS]     (request set clock time)");
 }
 
+static String g_line;
+static bool readLineNonBlocking(String &out)
+{
+    while (Serial.available() > 0)
+    {
+        char c = (char)Serial.read();
+
+        // ignore CR
+        if (c == '\r')
+            continue;
+
+        // newline -> commit
+        if (c == '\n')
+        {
+            out = g_line;
+            g_line = "";
+            out.trim();
+            return out.length() > 0;
+        }
+
+        // backspace / delete
+        if (c == 8 || c == 127)
+        {
+            if (g_line.length() > 0)
+                g_line.remove(g_line.length() - 1);
+            continue;
+        }
+
+        // normal char (cap length)
+        if (g_line.length() < 96)
+            g_line += c;
+    }
+    return false;
+}
+
 void commandTask(void *pvParameters)
 {
     auto *ctx = static_cast<SystemContext *>(pvParameters);
@@ -121,20 +156,13 @@ void commandTask(void *pvParameters)
 
     while (true)
     {
-        if (Serial.available() <= 0)
+        String input;
+        if (!readLineNonBlocking(input))
         {
             vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
             continue;
         }
-
-        String input = Serial.readStringUntil('\n');
-        input.trim();
-
-        if (input.length() == 0)
-        {
-            vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
-            continue;
-        }
+        Serial.printf("\n> %s\n", input.c_str());
 
         uint32_t now = millis();
         if (now - lastCommandMs < CMD_COOLDOWN_MS)
@@ -240,6 +268,22 @@ void commandTask(void *pvParameters)
                 Serial.println("[CMD] air -> OFF");
             }
         }
+        else if (lower == "-net on")
+        {
+            ctx->state->requestNetOn();
+            Serial.println("[CMD] net on requested");
+        }
+        else if (lower == "-net off")
+        {
+            ctx->state->requestNetOff();
+            Serial.println("[CMD] net off requested");
+        }
+        else if (lower == "-netuptime")
+        {
+            ctx->state->requestSyncNtp();
+            Serial.println("[CMD] ntp sync requested");
+        }
+
         // ---- Set time (request via SharedState)
         else if (lower.indexOf("time=") >= 0)
         {

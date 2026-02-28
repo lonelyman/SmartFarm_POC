@@ -31,6 +31,8 @@ public:
       return true;
    }
 
+   bool syncFromNetwork() override { return false; }
+
 private:
    uint16_t _minutes;
 };
