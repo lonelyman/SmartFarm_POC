@@ -5,12 +5,14 @@
 
 #include "interfaces/IModeSource.h"
 #include "interfaces/IClock.h"
+#include "interfaces/IUi.h"
 
 #include "domain/AirPumpSchedule.h"
 
 #include "drivers/Esp32Bh1750Light.h"
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/Esp32Relay.h"
+#include "drivers/Esp32WaterLevelInput.h"
 
 #include "application/FarmManager.h"
 
@@ -19,11 +21,14 @@
 struct SystemContext
 {
    SharedState *state;
+   IUi *ui;
    AirPumpSchedule *airSchedule;
 
    // Sensors
    Esp32Bh1750Light *lightSensor;
    Esp32FakeTemperature *tempSensor;
+   // Water level sensors (XKC-Y25)
+   Esp32WaterLevelInput *waterLevelInput;
 
    // Actuators
    Esp32Relay *waterPump;

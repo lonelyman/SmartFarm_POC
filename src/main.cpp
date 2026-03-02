@@ -8,6 +8,7 @@
 #include "drivers/Esp32FakeTemperature.h"
 #include "drivers/Esp32Relay.h"
 #include "drivers/RtcDs3231Time.h"
+#include "drivers/Esp32WaterLevelInput.h"
 
 #include "application/FarmManager.h"
 
@@ -18,10 +19,12 @@
 #include "infrastructure/AppBoot.h"
 #include "infrastructure/FakeClock.h"
 #include "infrastructure/RtcClock.h"
+#include "infrastructure/Esp32WebUi.h"
 
 // --- Global Objects (Composition Root) ---
 
 SharedState state;
+
 AirPumpSchedule airSchedule;
 
 Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
@@ -30,6 +33,7 @@ Esp32WiFiNetwork wifiNet(WIFI_SSID, WIFI_PASSWORD);
 Esp32Bh1750Light lightSensor("Main-Light");
 Esp32FakeTemperature tempSensor("Main-Temp", 30.0f);
 
+Esp32WaterLevelInput waterLevelInput(PIN_WATER_LEVEL_CH1_LOW_SENSOR, PIN_WATER_LEVEL_CH2_LOW_SENSOR);
 // Relays
 Esp32Relay waterPump(PIN_RELAY_WATER_PUMP, "Water-Pump");
 Esp32Relay mistSystem(PIN_RELAY_MIST, "Mist-System");
@@ -49,24 +53,31 @@ RtcClock sysClock(rtcTime);
 
 // Shared task context (avoid extern globals inside tasks)
 static SystemContext ctx{
-    &state,
-    &airSchedule,
-    &lightSensor,
-    &tempSensor,
-    &waterPump,
-    &mistSystem,
-    &airPump,
-    &sysClock,
-    &wifiNet,
-    &modeSource,
-    &manager,
+    &state, // state
+    nullptr,
+    &airSchedule, // airSchedule
+
+    &lightSensor,     // lightSensor
+    &tempSensor,      // tempSensor
+    &waterLevelInput, // waterLevelInput
+
+    &waterPump,  // waterPump
+    &mistSystem, // mistSystem
+    &airPump,    // airPump
+
+    &sysClock,   // clock
+    &wifiNet,    // network
+    &modeSource, // modeSource
+    &manager,    // manager
 };
+
+static Esp32WebUi webUi(ctx, 80);
 
 void setup()
 {
     Serial.begin(SERIAL_BAUD);
     delay(100);
-
+    ctx.ui = &webUi;
     AppBoot::setup(ctx);
 }
 

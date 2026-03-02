@@ -27,6 +27,12 @@ struct SensorReading
         : value(v), isValid(iv), timestamp(ts) {}
 };
 
+struct WaterLevelSensors
+{
+    bool ch1Low = false;
+    bool ch2Low = false;
+};
+
 /**
  * @brief สถานะรวมของฟาร์ม (Single Source of Truth)
  */
@@ -35,6 +41,7 @@ struct SystemStatus
     SensorReading light;
     SensorReading ec;
     SensorReading temperature;
+    WaterLevelSensors waterLevelSensors;
 
     bool isPumpActive = false;    // ปั๊มน้ำ
     bool isMistActive = false;    // หมอก
@@ -68,8 +75,8 @@ struct ManualOverrides
 {
     bool wantPumpOn = false; // อยากให้ปั๊มน้ำ ON?
     bool wantMistOn = false; // อยากให้หมอก ON?
-    bool wantAirOn  = false; // อยากให้ปั๊มลม ON?
-    bool isUpdated  = false; // ยังไม่ใช้ตอนนี้ แต่เผื่ออนาคต
+    bool wantAirOn = false;  // อยากให้ปั๊มลม ON?
+    bool isUpdated = false;  // ยังไม่ใช้ตอนนี้ แต่เผื่ออนาคต
 };
 
 #endif

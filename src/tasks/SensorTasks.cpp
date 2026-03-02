@@ -48,6 +48,31 @@ static void updateModeFromSource(SystemContext &ctx, SystemStatus &status)
 	}
 }
 
+static void updateWaterLevelAlarmLeds(const WaterLevelSensors &wl)
+{
+	static uint32_t lastToggleMs = 0;
+	static bool ledPhase = false;
+
+	const uint32_t now = millis();
+	if (now - lastToggleMs >= 500) // กระพริบ 2Hz (500ms toggle)
+	{
+		lastToggleMs = now;
+		ledPhase = !ledPhase;
+	}
+
+	// CH1
+	if (wl.ch1Low)
+		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, ledPhase ? HIGH : LOW);
+	else
+		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LOW);
+
+	// CH2
+	if (wl.ch2Low)
+		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, ledPhase ? HIGH : LOW);
+	else
+		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LOW);
+}
+
 // ---------- Tasks ----------
 
 void inputTask(void *pvParameters)
@@ -72,6 +97,16 @@ void inputTask(void *pvParameters)
 		// Push to SharedState
 		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
 		ctx->state->updateTemperature(t.value, t.isValid, now);
+		// Water level sensors
+		if (ctx->waterLevelInput)
+		{
+			auto wl = ctx->waterLevelInput->read();
+			ctx->state->updateWaterLevelSensors(wl.ch1Low, wl.ch2Low, now);
+
+#if DEBUG_WATER_LEVEL_LOG
+			Serial.printf("[WLVL] ch1Low=%d ch2Low=%d\n", wl.ch1Low ? 1 : 0, wl.ch2Low ? 1 : 0);
+#endif
+		}
 
 #if DEBUG_BH1750_LOG
 		Serial.printf("[InputTask] BH1750 lux=%.1f valid=%d\n", lux.value, lux.isValid ? 1 : 0);
@@ -131,6 +166,8 @@ void controlTask(void *pvParameters)
 		// 2) Read snapshot + manual overrides
 		SystemStatus status = ctx->state->getSnapshot();
 		ManualOverrides manual = ctx->state->getManualOverrides();
+		
+		updateWaterLevelAlarmLeds(status.waterLevelSensors);
 
 		// 3) Update mode from source (adapter) -> sync to SharedState (inside function)
 		updateModeFromSource(*ctx, status);

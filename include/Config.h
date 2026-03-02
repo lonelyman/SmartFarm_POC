@@ -17,8 +17,16 @@ constexpr int PIN_RELAY_FREE3 = 17;
 constexpr int PIN_RELAY_FREE4 = 14;
 
 // ====================== ANALOG INPUTS (EC / อื่น ๆ) ======================
-constexpr int PIN_ANALOG_EC = 32;
-constexpr int PIN_ANALOG_FREE = 33;
+constexpr int PIN_ANALOG_EC = 0;
+constexpr int PIN_ANALOG_FREE = 0;
+
+// ====================== WATER LEVEL SENSORS (XKC-Y25) ======================
+constexpr int PIN_WATER_LEVEL_CH1_LOW_SENSOR = 32;
+constexpr int PIN_WATER_LEVEL_CH2_LOW_SENSOR = 33;
+
+// ====================== WATER LEVEL ALARM LEDS =============================
+constexpr int PIN_WATER_LEVEL_CH1_ALARM_LED = 23;
+constexpr int PIN_WATER_LEVEL_CH2_ALARM_LED = 19;
 
 // ====================== SWITCH INPUTS (ปุ่มหน้าตู้ / สวิตช์โหมด) ========
 constexpr int PIN_SW_MODE_A = 34;
@@ -31,14 +39,18 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 
 // ====================== DEBUG LOG SWITCHES ======================
 // 1 = เปิด log, 0 = ปิด
-#define DEBUG_BH1750_LOG 0  // log จากเซนเซอร์แสง BH1750
-#define DEBUG_TEMP_LOG 0    // log จากอุณหภูมิ (fake ตอนนี้)
-#define DEBUG_EC_LOG 0      // log จาก EC (อนาคต)
-#define DEBUG_TIME_LOG 1    // log เวลา (HH:MM)
-#define DEBUG_CONTROL_LOG 1 // log จาก ControlTask (mode/pump/mist/air)
+#define DEBUG_BH1750_LOG 1      // log จากเซนเซอร์แสง BH1750
+#define DEBUG_TEMP_LOG 0        // log จากอุณหภูมิ (fake ตอนนี้)
+#define DEBUG_EC_LOG 0          // log จาก EC (อนาคต)
+#define DEBUG_TIME_LOG 1        // log เวลา (HH:MM)
+#define DEBUG_WATER_LEVEL_LOG 1 // log จาก WaterLevelInput
+#define DEBUG_CONTROL_LOG 1     // log จาก ControlTask (mode/pump/mist/air)
+
+#define ENABLE_WATER_LEVEL_CH1 0 // ถ้าไม่มีเซนเซอร์ CH1 ให้ disable เพื่อลด false alarm
+#define ENABLE_WATER_LEVEL_CH2 0 // ถ้าไม่มีเซนเซอร์ CH2 ให้ disable เพื่อลด false alarm
 
 // ==== Network & Time Config ====
-#define WIFI_SSID "S21 Ultra ของ นิพน"
+#define WIFI_SSID "S21-Ult-Nip"
 #define WIFI_PASSWORD "ppvz7847"
 
 #define NTP_SERVER "pool.ntp.org"

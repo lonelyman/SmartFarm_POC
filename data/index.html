@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+   <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <style>
+         body {
+            background: #0b0f17;
+            color: #e5e7eb;
+            font-family: Arial;
+            margin: 16px;
+         }
+         .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+         }
+         .card {
+            background: #0f172a;
+            border: 1px solid #1f2937;
+            border-radius: 12px;
+            padding: 12px;
+         }
+         .title {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 6px;
+         }
+         .value {
+            font-size: 24px;
+            font-weight: 700;
+         }
+         .pill {
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+         }
+         .ok {
+            background: #064e3b;
+            color: #a7f3d0;
+         }
+         .bad {
+            background: #7f1d1d;
+            color: #fecaca;
+         }
+         pre {
+            background: #020617;
+            color: #22c55e;
+            padding: 10px;
+            border-radius: 10px;
+            overflow: auto;
+         }
+         @media (max-width: 520px) {
+            .grid {
+               grid-template-columns: 1fr;
+            }
+         }
+      </style>
+   </head>
+   <body>
+      <h3>SmartFarm Local UI</h3>
+
+      <div class="grid">
+         <div class="card">
+            <div class="title">MODE</div>
+            <div class="value" id="modeText">-</div>
+            <div class="title">raw</div>
+            <div id="modeId">-</div>
+         </div>
+
+         <div class="card">
+            <div class="title">ACTUATORS</div>
+            <div>PUMP: <span class="pill" id="pumpPill">-</span></div>
+            <br />
+            <div>MIST: <span class="pill" id="mistPill">-</span></div>
+            <br />
+            <div>AIR : <span class="pill" id="airPill">-</span></div>
+         </div>
+
+         <div class="card">
+            <div class="title">LIGHT (BH1750)</div>
+            <div class="value"><span id="lux">-</span> lux</div>
+            <div class="pill" id="luxValidPill">-</div>
+         </div>
+
+         <div class="card">
+            <div class="title">TEMPERATURE</div>
+            <div class="value"><span id="temp">-</span> °C</div>
+            <div class="pill" id="tempValidPill">-</div>
+         </div>
+
+         <div class="card" style="grid-column: 1/-1">
+            <div class="title">RAW JSON</div>
+            <pre id="raw">loading...</pre>
+         </div>
+      </div>
+
+      <script>
+         function setPill(el, on, onText, offText) {
+            el.textContent = on ? onText : offText;
+            el.className = "pill " + (on ? "ok" : "bad");
+         }
+         function modeToText(mode) {
+            if (mode === 0) return "IDLE";
+            if (mode === 1) return "AUTO";
+            if (mode === 2) return "MANUAL";
+            return "UNKNOWN";
+         }
+         async function refresh() {
+            const r = await fetch("/api/status");
+            const s = await r.text();
+            document.getElementById("raw").textContent = s;
+
+            let data;
+            try {
+               data = JSON.parse(s);
+            } catch (e) {
+               return;
+            }
+
+            const mode = Number(data.mode);
+            document.getElementById("modeId").textContent = String(mode);
+            document.getElementById("modeText").textContent = modeToText(mode);
+
+            setPill(
+               document.getElementById("pumpPill"),
+               Number(data.pump) === 1,
+               "ON",
+               "OFF",
+            );
+            setPill(
+               document.getElementById("mistPill"),
+               Number(data.mist) === 1,
+               "ON",
+               "OFF",
+            );
+            setPill(
+               document.getElementById("airPill"),
+               Number(data.air) === 1,
+               "ON",
+               "OFF",
+            );
+
+            document.getElementById("lux").textContent = data.lux ?? "-";
+            setPill(
+               document.getElementById("luxValidPill"),
+               Number(data.luxValid) === 1,
+               "VALID",
+               "INVALID",
+            );
+
+            document.getElementById("temp").textContent = data.temp ?? "-";
+            setPill(
+               document.getElementById("tempValidPill"),
+               Number(data.tempValid) === 1,
+               "VALID",
+               "INVALID",
+            );
+         }
+         setInterval(refresh, 1000);
+         refresh();
+      </script>
+   </body>
+</html>
