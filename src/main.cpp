@@ -28,7 +28,7 @@ SharedState state;
 AirPumpSchedule airSchedule;
 
 Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
-Esp32WiFiNetwork wifiNet(WIFI_SSID, WIFI_PASSWORD);
+Esp32WiFiNetwork wifiNet;
 // Sensors
 Esp32Bh1750Light lightSensor("Main-Light");
 Esp32FakeTemperature tempSensor("Main-Temp", 30.0f);

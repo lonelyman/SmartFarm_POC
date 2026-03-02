@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+   <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>SmartFarm WiFi Setup</title>
+      <style>
+         body {
+            font-family: system-ui, Arial;
+            margin: 20px;
+            background: #0b0f14;
+            color: #e8eef7;
+         }
+         .card {
+            max-width: 420px;
+            margin: auto;
+            padding: 16px;
+            border: 1px solid #243244;
+            border-radius: 12px;
+            background: #0f1620;
+         }
+         label {
+            display: block;
+            margin-top: 12px;
+            font-size: 14px;
+            color: #b9c7d9;
+         }
+         input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 6px;
+            border-radius: 10px;
+            border: 1px solid #2a3b52;
+            background: #0b0f14;
+            color: #e8eef7;
+         }
+         button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 16px;
+            border: 0;
+            border-radius: 10px;
+            background: #2f7cf6;
+            color: white;
+            font-weight: 600;
+         }
+         small {
+            color: #8aa0b8;
+         }
+      </style>
+   </head>
+   <body>
+      <div class="card">
+         <h3>SmartFarm WiFi Provisioning</h3>
+         <small>กรอก WiFi แล้วกด Save</small>
+         <form method="POST" action="/save">
+            <label>SSID</label>
+            <input name="ssid" placeholder="WiFi name" required />
+            <label>Password</label>
+            <input name="pass" placeholder="WiFi password" type="password" />
+            <label>Hostname</label>
+            <input name="host" placeholder="smartfarm" value="smartfarm" />
+            <button type="submit">Save</button>
+         </form>
+      </div>
+   </body>
+</html>

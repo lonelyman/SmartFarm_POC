@@ -1,7 +1,11 @@
 .
 ├── README.md
 ├── data
-│   └── schedule.json
+│   ├── schedule.json
+│   ├── wifi.json
+│   └── www
+│       ├── dashboard.html
+│       └── wifi.html
 ├── include
 │   ├── Config.h
 │   ├── application
@@ -13,10 +17,12 @@
 │   │   ├── Esp32Bh1750Light.h
 │   │   ├── Esp32FakeTemperature.h
 │   │   ├── Esp32Relay.h
+│   │   ├── Esp32WaterLevelInput.h
 │   │   └── RtcDs3231Time.h
 │   ├── infrastructure
 │   │   ├── AppBoot.h
 │   │   ├── Esp32ModeSwitchSource.h
+│   │   ├── Esp32WebUi.h
 │   │   ├── Esp32WiFiNetwork.h
 │   │   ├── FakeClock.h
 │   │   ├── GlobalState.h
@@ -24,21 +30,26 @@
 │   │   ├── RtcClock.h
 │   │   ├── ScheduleStore.h
 │   │   ├── SharedState.h
-│   │   └── SystemContext.h
+│   │   ├── SystemContext.h
+│   │   ├── WifiConfigStore.h
+│   │   └── WifiProvisioning.h
 │   ├── interfaces
 │   │   ├── IActuator.h
 │   │   ├── IClock.h
 │   │   ├── IModeSource.h
 │   │   ├── INetwork.h
 │   │   ├── ISensor.h
+│   │   ├── IUi.h
 │   │   └── Types.h
 │   └── tasks
-│       └── TaskEntrypoints.h
+│       ├── TaskEntrypoints.h
+│       └── WebUiTask.h
 ├── lib
 ├── platformio.ini
 ├── src
 │   ├── application
-│   │   └── FarmManager.cpp
+│   │   ├── FarmManager.cpp
+│   │   └── WebUiTask.cpp
 │   ├── domain
 │   │   └── AirPumpSchedule.cpp
 │   ├── drivers
@@ -49,10 +60,13 @@
 │   ├── infrastructure
 │   │   ├── AppBoot.cpp
 │   │   ├── Esp32ModeSwitchSource.cpp
+│   │   ├── Esp32WebUi.cpp
 │   │   ├── Esp32WiFiNetwork.cpp
 │   │   ├── NetTimeSync.cpp
 │   │   ├── ScheduleStore.cpp
-│   │   └── SharedState.cpp
+│   │   ├── SharedState.cpp
+│   │   ├── WifiConfigStore.cpp
+│   │   └── WifiProvisioning.cpp
 │   ├── main.cpp
 │   └── tasks
 │       ├── CommandTask.cpp
@@ -62,4 +76,4 @@
 │   └── README
 └── tree.txt
 
-17 directories, 46 files
+18 directories, 59 files

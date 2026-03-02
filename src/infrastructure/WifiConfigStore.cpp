@@ -1,0 +1,94 @@
+#include "infrastructure/WifiConfigStore.h"
+
+#include <LittleFS.h>
+#include <ArduinoJson.h>
+
+static String getStringOrEmpty(JsonVariantConst v)
+{
+   if (v.is<const char *>())
+      return String(v.as<const char *>());
+   return String();
+}
+
+// ✅ โปรดักชันนิยม: Store ไม่ควร LittleFS.begin() เอง
+// ให้ AppBoot เป็นคน mount ครั้งเดียว
+static bool ensureFsMounted()
+{
+   // ถ้า mount แล้ว root path จะ exists ได้
+   if (LittleFS.exists("/"))
+      return true;
+
+   Serial.println("⚠️ [WiFiCFG] LittleFS not mounted (mount in AppBoot)");
+   return false;
+}
+
+bool WifiConfigStore::load(WifiConfig &out)
+{
+   if (!ensureFsMounted())
+      return false;
+
+   if (!LittleFS.exists(_path))
+   {
+      Serial.printf("⚠️ [WiFiCFG] not found: %s\n", _path);
+      return false;
+   }
+
+   File f = LittleFS.open(_path, "r");
+   if (!f)
+   {
+      Serial.printf("⚠️ [WiFiCFG] open failed: %s\n", _path);
+      return false;
+   }
+
+   JsonDocument doc;
+   DeserializationError err = deserializeJson(doc, f);
+   f.close();
+
+   if (err)
+   {
+      Serial.printf("⚠️ [WiFiCFG] JSON parse failed: %s\n", err.c_str());
+      return false;
+   }
+
+   out.ssid = getStringOrEmpty(doc["ssid"]);
+   out.password = getStringOrEmpty(doc["password"]);
+   out.hostname = getStringOrEmpty(doc["hostname"]);
+
+   if (out.hostname.length() == 0)
+      out.hostname = "smartfarm";
+
+   Serial.printf("✅ [WiFiCFG] loaded: ssid='%s' hostname='%s'\n",
+                 out.ssid.c_str(),
+                 out.hostname.c_str());
+
+   return true;
+}
+
+bool WifiConfigStore::save(const WifiConfig &cfg)
+{
+   if (!ensureFsMounted())
+      return false;
+
+   File f = LittleFS.open(_path, "w");
+   if (!f)
+   {
+      Serial.printf("⚠️ [WiFiCFG] open for write failed: %s\n", _path);
+      return false;
+   }
+
+   JsonDocument doc;
+   doc["ssid"] = cfg.ssid;
+   doc["password"] = cfg.password;
+   doc["hostname"] = (cfg.hostname.length() > 0) ? cfg.hostname : "smartfarm";
+
+   if (serializeJsonPretty(doc, f) == 0)
+   {
+      f.close();
+      Serial.println("⚠️ [WiFiCFG] write failed");
+      return false;
+   }
+
+   f.close();
+   Serial.printf("✅ [WiFiCFG] saved: %s\n", _path);
+   return true;
+}

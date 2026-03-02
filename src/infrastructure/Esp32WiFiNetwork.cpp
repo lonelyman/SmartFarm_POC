@@ -1,16 +1,51 @@
 #include "infrastructure/Esp32WiFiNetwork.h"
 
-#include <Arduino.h>
 #include <WiFi.h>
 
-Esp32WiFiNetwork::Esp32WiFiNetwork(const char *ssid, const char *pass)
-    : _ssid(ssid), _pass(pass) {}
+Esp32WiFiNetwork::Esp32WiFiNetwork(const char *configPath)
+    : _store(configPath)
+{
+}
 
 void Esp32WiFiNetwork::begin()
 {
-   WiFi.mode(WIFI_STA);
-   WiFi.setAutoReconnect(true);
+   // ตั้งค่า WiFi แบบไม่เขียนลง flash (ลดพัง/ลด write)
    WiFi.persistent(false);
+   WiFi.setAutoReconnect(true);
+
+   // โหลด config จาก LittleFS ครั้งเดียว (อย่าโหลดถี่ ๆ ใน loop)
+   WifiConfig cfg;
+   if (_store.load(cfg) && cfg.isValid())
+   {
+      _cfg = cfg;
+      _hasCfg = true;
+
+      Serial.printf("📡 [WiFi] using config from %s (ssid=%s)\n",
+                    _store.path(),
+                    _cfg.ssid.c_str());
+
+      applyStaSettings_();
+   }
+   else
+   {
+      _hasCfg = false;
+      Serial.println("⚠️ [WiFi] no valid wifi.json found (STA not started)");
+      // ไม่เปิด STA ตรงนี้ เพื่อให้ provisioning ไปทำงาน
+   }
+}
+
+void Esp32WiFiNetwork::applyStaSettings_()
+{
+   // เข้าโหมด STA (client)
+   WiFi.mode(WIFI_STA);
+
+   // hostname: ต้อง set ก่อน begin()
+#if defined(ESP32)
+   if (_cfg.hostname.length() > 0)
+   {
+      WiFi.setHostname(_cfg.hostname.c_str());
+   }
+#endif
 }
 
 bool Esp32WiFiNetwork::isConnected() const
@@ -23,19 +58,25 @@ bool Esp32WiFiNetwork::ensureConnected(uint32_t timeoutMs)
    if (isConnected())
       return true;
 
-   if (_ssid == nullptr || _ssid[0] == '\0')
+   if (!_hasCfg || !_cfg.isValid())
    {
-      Serial.println("[NET] SSID not set");
+      Serial.println("[NET] cannot connect: wifi.json invalid / missing");
       return false;
    }
 
-   Serial.printf("[NET] Connecting to SSID: %s\n", _ssid);
-   WiFi.begin(_ssid, _pass);
+   // กันกรณีมีใครไปสลับโหมดเป็น AP
+   if (WiFi.getMode() != WIFI_STA)
+   {
+      applyStaSettings_();
+   }
+
+   Serial.printf("[NET] Connecting to SSID: %s\n", _cfg.ssid.c_str());
+   WiFi.begin(_cfg.ssid.c_str(), _cfg.password.c_str());
 
    const uint32_t start = millis();
    while (!isConnected() && (millis() - start) < timeoutMs)
    {
-      vTaskDelay(pdMS_TO_TICKS(250));
+      delay(250);
    }
 
    if (isConnected())
@@ -50,9 +91,17 @@ bool Esp32WiFiNetwork::ensureConnected(uint32_t timeoutMs)
 
 void Esp32WiFiNetwork::disconnect()
 {
+   if (WiFi.getMode() != WIFI_STA && WiFi.getMode() != WIFI_AP_STA)
+      return;
+
    if (isConnected())
    {
       Serial.println("[NET] Disconnecting...");
+      WiFi.disconnect(true /*wifioff*/);
+   }
+   else
+   {
+      // ปิดวิทยุไว้เลยถ้าไม่ได้ใช้
       WiFi.disconnect(true);
    }
 }

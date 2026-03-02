@@ -1,7 +1,8 @@
 #pragma once
 #include <stdint.h>
 
-class INetwork {
+class INetwork
+{
 public:
     virtual ~INetwork() = default;
 
@@ -14,4 +15,6 @@ public:
     virtual bool isConnected() const = 0;
 
     virtual void disconnect() = 0;
+
+    virtual bool hasValidConfig() const = 0;
 };

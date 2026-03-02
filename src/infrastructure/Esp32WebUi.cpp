@@ -54,10 +54,10 @@ void Esp32WebUi::registerRoutes()
    // หน้า UI (โหลดจาก LittleFS)
    _server.on("/", HTTP_GET, [&]()
               {
-      File f = LittleFS.open("/index.html", "r");
+      File f = LittleFS.open("/www/dashboard.html", "r");
       if (!f)
       {
-         _server.send(500, "text/plain; charset=utf-8", "index.html not found in LittleFS");
+         _server.send(500, "text/plain; charset=utf-8", "dashboard.html not found in LittleFS");
          return;
       }
       _server.streamFile(f, "text/html; charset=utf-8");
