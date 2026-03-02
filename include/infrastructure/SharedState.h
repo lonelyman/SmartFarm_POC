@@ -109,7 +109,8 @@ public:
     // ✅ MANUAL overrides
     ManualOverrides getManualOverrides();
     void setManualOverrides(const ManualOverrides &m);
-
+    // ✅ Water level sensors (CH1/CH2)
+    void updateWaterLevelSensors(bool ch1Low, bool ch2Low, uint32_t ts);
     // ✅ Time set request (CommandTask -> SharedState -> ControlTask -> IClock)
     void requestSetClockTime(uint8_t hour, uint8_t minute, uint8_t second);
     bool consumeSetClockTime(TimeSetRequest &out);

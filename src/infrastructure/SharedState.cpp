@@ -24,6 +24,22 @@ void SharedState::setManualOverrides(const ManualOverrides &m)
    }
 }
 
+void SharedState::updateWaterLevelSensors(bool ch1Low, bool ch2Low, uint32_t ts)
+{
+   (void)ts; // ยังไม่ใช้ก็ไม่เป็นไร กัน warning
+
+   if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+   {
+      _status.waterLevelSensors.ch1Low = ch1Low;
+      _status.waterLevelSensors.ch2Low = ch2Low;
+      xSemaphoreGive(_mutex);
+   }
+   else
+   {
+      Serial.println("⚠️ SharedState: Update WaterLevelSensors Lock Timeout!");
+   }
+}
+
 void SharedState::requestSetClockTime(uint8_t hour, uint8_t minute, uint8_t second)
 {
    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))

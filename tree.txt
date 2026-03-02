@@ -5,7 +5,8 @@
 ├── include
 │   ├── Config.h
 │   ├── application
-│   │   └── FarmManager.h
+│   │   ├── FarmManager.h
+│   │   └── FarmModels.h
 │   ├── domain
 │   │   └── AirPumpSchedule.h
 │   ├── drivers
@@ -16,6 +17,7 @@
 │   ├── infrastructure
 │   │   ├── AppBoot.h
 │   │   ├── Esp32ModeSwitchSource.h
+│   │   ├── Esp32WiFiNetwork.h
 │   │   ├── FakeClock.h
 │   │   ├── GlobalState.h
 │   │   ├── NetTimeSync.h
@@ -27,6 +29,7 @@
 │   │   ├── IActuator.h
 │   │   ├── IClock.h
 │   │   ├── IModeSource.h
+│   │   ├── INetwork.h
 │   │   ├── ISensor.h
 │   │   └── Types.h
 │   └── tasks
@@ -46,15 +49,17 @@
 │   ├── infrastructure
 │   │   ├── AppBoot.cpp
 │   │   ├── Esp32ModeSwitchSource.cpp
+│   │   ├── Esp32WiFiNetwork.cpp
 │   │   ├── NetTimeSync.cpp
 │   │   ├── ScheduleStore.cpp
 │   │   └── SharedState.cpp
 │   ├── main.cpp
 │   └── tasks
 │       ├── CommandTask.cpp
+│       ├── NetworkTask.cpp
 │       └── SensorTasks.cpp
 ├── test
 │   └── README
 └── tree.txt
 
-17 directories, 41 files
+17 directories, 46 files

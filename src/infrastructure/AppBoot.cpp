@@ -1,13 +1,16 @@
-#include "infrastructure/AppBoot.h"
+
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <LittleFS.h>
 
 #include "Config.h"
-#include "tasks/TaskEntrypoints.h"
+
+#include "infrastructure/AppBoot.h"
 #include "infrastructure/ScheduleStore.h"
 
+#include "tasks/TaskEntrypoints.h"
+#include "tasks/WebUiTask.h"
 namespace
 {
    void printBanner()
@@ -57,12 +60,26 @@ namespace
 
    void initDrivers(SystemContext &ctx)
    {
+      // Sensors
       ctx.lightSensor->begin();
       ctx.tempSensor->begin();
 
+      if (ctx.waterLevelInput)
+         ctx.waterLevelInput->begin();
+
+      if (ctx.ui)
+         ctx.ui->begin();
+
+      // Actuators
       ctx.waterPump->begin();
       ctx.mistSystem->begin();
       ctx.airPump->begin();
+
+      // Water level alarm LEDs
+      pinMode(PIN_WATER_LEVEL_CH1_ALARM_LED, OUTPUT);
+      pinMode(PIN_WATER_LEVEL_CH2_ALARM_LED, OUTPUT);
+      digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LOW);
+      digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LOW);
    }
 
    static void initNetwork(SystemContext &ctx)
@@ -100,6 +117,7 @@ namespace
       xTaskCreatePinnedToCore(controlTask, "Ctrl", CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
       xTaskCreatePinnedToCore(commandTask, "Cmd", COMMAND_TASK_STACK, &ctx, 1, nullptr, 1);
       xTaskCreatePinnedToCore(networkTask, "Net", 4096, &ctx, 1, nullptr, 0);
+      xTaskCreatePinnedToCore(webUiTask, "WebUiTask", 4096, &ctx, 1, nullptr, 1);
    }
 }
 
@@ -113,8 +131,8 @@ void AppBoot::setup(SystemContext &ctx)
    // ✅ แทน initModeSwitchPins() ด้วย ModeSource (Adapter)
    initModeSource(ctx);
 
-   initDrivers(ctx);
    initClock(ctx);
+   initDrivers(ctx);
    initNetwork(ctx);
    setInitialSafeState(ctx);
    startTasks(ctx);
