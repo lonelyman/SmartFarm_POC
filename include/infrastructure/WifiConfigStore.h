@@ -1,3 +1,4 @@
+// include/infrastructure/WifiConfigStore.h
 #pragma once
 
 #include <Arduino.h>

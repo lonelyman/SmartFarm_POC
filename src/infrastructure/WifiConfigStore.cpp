@@ -1,3 +1,4 @@
+// src/infrastructure/WifiConfigStore.cpp
 #include "infrastructure/WifiConfigStore.h"
 
 #include <LittleFS.h>

@@ -1,5 +1,6 @@
 // src/infrastructure/WifiProvisioning.cpp
 #include "infrastructure/WifiProvisioning.h"
+#include <LittleFS.h>
 
 WifiProvisioning::WifiProvisioning(const char *configPath, uint16_t port)
     : _store(configPath), _server(port)
@@ -8,13 +9,22 @@ WifiProvisioning::WifiProvisioning(const char *configPath, uint16_t port)
 
 void WifiProvisioning::tick()
 {
-   // ✅ 0) ถ้า provisioning จบแล้ว ไม่ทำอะไร
+   // 1) Deferred reboot ต้องมาก่อน และต้องทำได้แม้ _done=true
+   if (_pendingRestart && (int32_t)(millis() - _restartAtMs) >= 0)
+   {
+      Serial.println("🔄 [PROV] reboot now");
+      delay(200);
+      ESP.restart();
+      return; // safety
+   }
+
+   // 2) ถ้า provisioning จบแล้ว และไม่มี pending restart ก็ไม่ต้องทำอะไร
    if (_done)
    {
       return;
    }
 
-   // ✅ 1) เช็ค config “ครั้งเดียวต่อบูต”
+   // 3) เช็ค config “ครั้งเดียวต่อบูต”
    if (!_checkedConfig)
    {
       _checkedConfig = true;
@@ -37,18 +47,10 @@ void WifiProvisioning::tick()
                     _apSsid.c_str(), WiFi.softAPIP().toString().c_str());
    }
 
-   // ✅ 2) handle client เฉพาะตอนเปิด AP แล้ว
+   // 4) handle client เฉพาะตอนเปิด AP แล้ว
    if (_started)
    {
       _server.handleClient();
-   }
-
-   // ✅ 3) Deferred reboot (ห้าม restart ใน handler)
-   if (_pendingRestart && (int32_t)(millis() - _restartAtMs) >= 0)
-   {
-      Serial.println("🔄 [PROV] reboot now");
-      delay(200);
-      ESP.restart();
    }
 }
 
@@ -60,13 +62,41 @@ void WifiProvisioning::startAp()
 
 void WifiProvisioning::registerRoutes()
 {
+   // GET / -> serve wifi.html จาก LittleFS
    _server.on("/", HTTP_GET, [&]()
-              { _server.send(200, "text/html; charset=utf-8", pageFormHtml()); });
+              {
+                 if (!LittleFS.exists("/www/wifi.html"))
+                 {
+                    _server.send(500, "text/plain; charset=utf-8",
+                                 "wifi.html not found in LittleFS: /www/wifi.html");
+                    return;
+                 }
 
+                 File f = LittleFS.open("/www/wifi.html", "r");
+                 if (!f)
+                 {
+                    _server.send(500, "text/plain; charset=utf-8",
+                                 "open wifi.html failed");
+                    return;
+                 }
+
+                 _server.streamFile(f, "text/html; charset=utf-8");
+                 f.close(); });
+
+   // POST /save -> save wifi.json, then serve saved.html, then deferred reboot
    _server.on("/save", HTTP_POST, [&]()
               {
                  String ssid = _server.arg("ssid");
                  String pass = _server.arg("password");
+
+                 ssid.trim();
+                 // pass ไม่ trim ก็ได้ เผื่อมี space จริง (แต่ส่วนใหญ่ไม่มี)
+
+                 if (ssid.length() == 0)
+                 {
+                    _server.send(400, "text/plain; charset=utf-8", "SSID is required");
+                    return;
+                 }
 
                  WifiConfig cfg;
                  cfg.ssid = ssid;
@@ -79,50 +109,29 @@ void WifiProvisioning::registerRoutes()
                     return;
                  }
 
-                 _server.send(200, "text/html; charset=utf-8", pageSavedHtml());
                  Serial.printf("✅ [PROV] saved wifi.json (ssid=%s)\n", ssid.c_str());
 
-                 _done = true;
+                 // ส่งหน้า saved.html (ถ้ามี) เพื่อให้ browser ได้ response ที่ “ไม่ว่าง”
+                 if (LittleFS.exists("/www/wifi-saved.html"))
+                 {
+                    File f = LittleFS.open("/www/wifi-saved.html", "r");
+                    if (f)
+                    {
+                       _server.streamFile(f, "text/html; charset=utf-8");
+                       f.close();
+                    }
+                    else
+                    {
+                       _server.send(200, "text/plain; charset=utf-8", "Saved. Rebooting...");
+                    }
+                 }
+                 else
+                 {
+                    _server.send(200, "text/plain; charset=utf-8", "Saved. Rebooting...");
+                 }
+
+                 // deferred reboot (tick() จะทำก่อน _done)
                  _pendingRestart = true;
-                 _restartAtMs = millis() + 1200; // หน่วงให้ response ส่งออกก่อน
-              });
-}
-
-// ชั่วคราว: html ไว้ใน .cpp ก่อน (Step ถัดไปค่อยแยกไฟล์)
-const char *WifiProvisioning::pageFormHtml() const
-{
-   return R"HTML(
-<!doctype html><html>
-<head><meta name=viewport content="width=device-width, initial-scale=1">
-<style>
-body{font-family:Arial;margin:16px}
-input{width:100%;padding:10px;margin:6px 0}
-button{padding:10px 14px;margin-top:8px}
-.card{max-width:420px;margin:auto;border:1px solid #ddd;border-radius:10px;padding:14px}
-</style></head>
-<body>
-<div class="card">
-<h3>SmartFarm WiFi Setup</h3>
-<form method="POST" action="/save">
-<label>SSID</label>
-<input name="ssid" placeholder="WiFi name">
-<label>Password</label>
-<input name="password" placeholder="WiFi password" type="password">
-<button type="submit">Save</button>
-</form>
-</div>
-</body></html>
-)HTML";
-}
-
-const char *WifiProvisioning::pageSavedHtml() const
-{
-   return R"HTML(
-<!doctype html><html><head>
-<meta name=viewport content="width=device-width,initial-scale=1">
-</head><body>
-<h3>Saved ✅</h3>
-<p>Device will reboot now...</p>
-</body></html>
-)HTML";
+                 _restartAtMs = millis() + 1200;
+                 _done = true; });
 }
