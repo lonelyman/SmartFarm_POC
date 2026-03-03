@@ -32,8 +32,7 @@
 │   │   ├── ScheduleStore.h
 │   │   ├── SharedState.h
 │   │   ├── SystemContext.h
-│   │   ├── WifiConfigStore.h
-│   │   └── WifiProvisioning.h
+│   │   └── WifiConfigStore.h
 │   ├── interfaces
 │   │   ├── IActuator.h
 │   │   ├── IClock.h
@@ -68,15 +67,15 @@
 │   │   ├── NetTimeSync.cpp
 │   │   ├── ScheduleStore.cpp
 │   │   ├── SharedState.cpp
-│   │   ├── WifiConfigStore.cpp
-│   │   └── WifiProvisioning.cpp
+│   │   └── WifiConfigStore.cpp
 │   ├── main.cpp
 │   └── tasks
 │       ├── CommandTask.cpp
 │       ├── NetworkTask.cpp
 │       └── SensorTasks.cpp
 ├── test
-│   └── README
+│   ├── README
+│   └── test_farmmanager.cpp
 └── tree.txt
 
-18 directories, 62 files
+18 directories, 61 files

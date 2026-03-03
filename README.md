@@ -238,10 +238,14 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 
 ## 📡 Network & NTP
 
-- เรื่อง Wi‑Fi ถูกมอบหมายให้ **NetworkTask** (ดู `src/tasks/NetworkTask.cpp`) ซึ่งเป็นเจ้าของการ connect/maintain และจะให้บริการคำสั่งจาก `Esp32WebUi` เมื่อใช้เว็บ UI.
+- เรื่อง Wi‑Fi ถูกมอบหมายให้ **NetworkTask** (ดู `src/tasks/NetworkTask.cpp`) ซึ่งเป็นเจ้าของการ connect/maintain.
+- ผู้ใช้กรอก SSID/รหัสผ่านผ่าน **หน้าเว็บ UI** (`/wifi` path) เมื่อเข้าถึงบอร์ดในโหมด AP (SmartFarm-Setup).
+  ข้อมูลจะถูกเก็บใน `wifi.json` โดย `WifiConfigStore` และ `Esp32WiFiNetwork` โหลดอัตโนมัติตอน boot.
+  (คลาส `WifiProvisioning` ถูกลบออกจากโค้ด – โหมด provisioning เดิมถูกผนวกเข้าใน WebUI สุดเดียว)
 - เมื่อเน็ตเวิร์กพร้อมแล้ว `NetTimeSync` ก็ถูกเรียกผ่าน NetworkTask เพื่อซิงค์เวลา
   (`connectWifiIfNeeded()`/`syncRtcFromNtp()`).
-- หากมี Wi‑Fi credential ใน `Config.h` และ `NetworkTask` ยืนยันการเชื่อมต่อไว้แล้ว, การ sync จาก `pool.ntp.org` จะอัปเดต RTC ได้อัตโนมัติ
+- หากมี Wi‑Fi credential ใน `wifi.json` และ `NetworkTask` ยืนยันการเชื่อมต่อไว้แล้ว,
+  การ sync จาก `pool.ntp.org` จะอัปเดต RTC ได้อัตโนมัติ
 - เรียก manual จาก Serial หรือเมนูเว็บได้เช่นเดิม
 
 ---
