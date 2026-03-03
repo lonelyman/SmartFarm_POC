@@ -1,7 +1,10 @@
+// include/infrastructure/SharedState.h
 #ifndef SHARED_STATE_H
 #define SHARED_STATE_H
 
 #include <Arduino.h>
+#include <cstring>
+#include <cstddef>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "../interfaces/Types.h"
@@ -28,6 +31,16 @@ struct NetCommand
     NetCmdType type = NetCmdType::None;
 };
 
+// ✅ Network State Machine (current state)
+enum class NetState : uint8_t
+{
+    AP_PRIMARY = 0,     // เปิด AP เป็นหลัก (offline-first)
+    STA_CONNECTING = 1, // กำลังพยายามต่อ STA
+    STA_CONNECTED = 2,  // ต่อ STA สำเร็จ
+    STA_FAILED = 3,     // ต่อ STA ไม่สำเร็จ (แล้วจะกลับ AP)
+    STA_STOPPED = 4,    // ผู้ใช้สั่ง NetOff (กลับ AP)
+};
+
 class SharedState
 {
 public:
@@ -42,6 +55,8 @@ public:
         // init safe defaults
         _manualOverrides = ManualOverrides{};
         _timeSetReq = TimeSetRequest{};
+        _netCmd = NetCommand{};
+        _netState = NetState::AP_PRIMARY; // ✅ default: boot เข้า AP เป็นหลัก
     }
 
     void setMode(SystemMode mode)
@@ -51,6 +66,27 @@ public:
             _status.mode = mode;
             xSemaphoreGive(_mutex);
         }
+    }
+
+    // ✅ Network state (current)
+    void setNetState(NetState st)
+    {
+        if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+        {
+            _netState = st;
+            xSemaphoreGive(_mutex);
+        }
+    }
+
+    NetState getNetState()
+    {
+        NetState temp = NetState::AP_PRIMARY;
+        if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+        {
+            temp = _netState;
+            xSemaphoreGive(_mutex);
+        }
+        return temp;
     }
 
     // เดิม: อัปเดตแสง + EC
@@ -115,10 +151,14 @@ public:
     void requestSetClockTime(uint8_t hour, uint8_t minute, uint8_t second);
     bool consumeSetClockTime(TimeSetRequest &out);
 
+    // ✅ Network commands
     void requestNetOn();
     void requestNetOff();
     void requestSyncNtp();
     bool consumeNetCommand(NetCommand &out);
+    // ✅ Network message (for UI feedback)
+    void setNetMessage(const char *msg);
+    void getNetMessage(char *out, size_t outLen);
 
 private:
     SystemStatus _status;
@@ -130,7 +170,11 @@ private:
     // ✅ เก็บคำขอตั้งเวลา (pending request)
     TimeSetRequest _timeSetReq;
 
+    // ✅ network command + current state
     NetCommand _netCmd;
+    NetState _netState;
+
+    char _netMsg[96] = "ready";
 };
 
 #endif

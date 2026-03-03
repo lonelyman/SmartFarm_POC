@@ -18,6 +18,8 @@ public:
    void disconnect() override;
 
    bool hasValidConfig() const override; // ✅
+   void startAp();
+   void disconnectStaOnly();
 
 private:
    String _ssid;
