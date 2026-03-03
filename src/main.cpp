@@ -18,7 +18,6 @@
 #include "infrastructure/SharedState.h"
 #include "infrastructure/SystemContext.h"
 #include "infrastructure/AppBoot.h"
-#include "infrastructure/FakeClock.h"
 #include "infrastructure/RtcClock.h"
 #include "infrastructure/Esp32WebUi.h"
 
@@ -46,11 +45,8 @@ RtcDs3231Time rtcTime;
 // Brain
 FarmManager manager(&airSchedule);
 
-#ifdef USE_FAKE_TIME
-FakeClock sysClock(FAKE_MINUTES_OF_DAY);
-#else
+// เราไม่ใช้เวลาปลอมอีกต่อไป – เสมอเชื่อมต่อกับ RTC
 RtcClock sysClock(rtcTime);
-#endif
 
 // Shared task context (avoid extern globals inside tasks)
 static SystemContext ctx{

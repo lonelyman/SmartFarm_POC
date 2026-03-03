@@ -29,9 +29,8 @@ constexpr int PIN_SW_MODE_A = 34;
 constexpr int PIN_SW_MODE_B = 35;
 
 // ====================== NETWORK SWITCH (AP/STA) ======================
-constexpr int PIN_SW_NET_AP  = 36;  // GPIO36 (VP) input-only
-constexpr int PIN_SW_NET_STA = 39;  // GPIO39 (VN) input-only
-
+constexpr int PIN_SW_NET_AP = 36;  // GPIO36 (VP) input-only
+constexpr int PIN_SW_NET_STA = 39; // GPIO39 (VN) input-only
 
 // ====================== ปรับเวลา debounce ปุ่ม (ms) ======================
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
@@ -56,12 +55,19 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 #define DAYLIGHT_OFFSET_SEC 0
 
 // ====================== TIME SOURCE CONFIG ======================
-// ถ้ายังไม่มี RTC จริง ให้ใช้ fake time ไปก่อน
-// #define USE_FAKE_TIME
+// ระบบจะใช้ DS3231 RTC เป็นแหล่งนาฬิกาเดียว
+// หากอุปกรณ์ไม่ตอบสนอง (begin() คืนค่า false) การอ่านเวลา
+// จะล้มเหลวและฟังก์ชันต่างๆ จะคืนค่า false พร้อม minutes=0
+// (ซึ่งจะทำให้ schedule หยุดทำงานและ ControlTask จะบันทึก
+//  warning)
 
-// ให้ระบบ "คิดว่า" ตอนนี้เป็นกี่นาทีของวัน (0..1439)
-// เช่น 07:30 = 7*60 + 30
-constexpr uint16_t FAKE_MINUTES_OF_DAY = 7 * 60 + 30; // 07:30 น.
+// ====================== MIST CONTROL HYSTERESIS ======================
+// ค่าอุณหภูมิที่ใช้ใน FarmManager::decideMistByTemp
+constexpr float HYSTERESIS_TEMP_ON = 32.0f;
+constexpr float HYSTERESIS_TEMP_OFF = 29.0f;
+
+// ====================== NETWORK SWITCH DEBOUNCE ======================
+constexpr unsigned long NET_SWITCH_DEBOUNCE_MS = 80;
 
 // ====================== AIR PUMP SCHEDULE (นาทีของวัน) ======================
 // ตั้งช่วงเวลาเปิดปั๊มลมที่นี่ ปรับทีหลังได้ง่าย

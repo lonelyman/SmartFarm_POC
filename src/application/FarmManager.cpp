@@ -1,4 +1,5 @@
 #include "application/FarmManager.h"
+#include "Config.h"
 
 FarmManager::FarmManager(const AirPumpSchedule *schedule)
     : _schedule(schedule) {}
@@ -64,13 +65,10 @@ bool FarmManager::decideMistByTemp(float tempC, bool valid)
    if (!valid)
       return false;
 
-   // hysteresis thresholds (ถ้าคุณมี config ของจริง ค่อยย้ายไป Config.h ใน Milestone 3)
-   constexpr float TEMP_ON = 32.0f;
-   constexpr float TEMP_OFF = 29.0f;
-
-   if (tempC >= TEMP_ON)
+   // hysteresis thresholds (moved to Config.h constants)
+   if (tempC >= HYSTERESIS_TEMP_ON)
       return true;
-   if (tempC <= TEMP_OFF)
+   if (tempC <= HYSTERESIS_TEMP_OFF)
       return false;
 
    return _mistLatched;

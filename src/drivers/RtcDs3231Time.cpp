@@ -11,32 +11,6 @@ RtcDs3231Time::RtcDs3231Time()
 
 // ===================== begin() =====================
 
-// bool RtcDs3231Time::begin()
-// {
-//    if (!_rtc.begin())
-//    {
-// #if DEBUG_TIME_LOG
-//       Serial.println("⚠️ RTC DS3231: ไม่พบอุปกรณ์บน I2C");
-// #endif
-//       _isOk = false;
-//       return false;
-//    }
-
-//    if (_rtc.lostPower())
-//    {
-// #if DEBUG_TIME_LOG
-//       Serial.println("⚠️ RTC DS3231: เวลาเพิ่ง reset (ต้องตั้งเวลาให้มันก่อน)");
-// #endif
-//       // ยังถือว่าใช้งานได้ แต่เวลาอาจไม่ถูก
-//    }
-
-//    _isOk = true;
-// #if DEBUG_TIME_LOG
-//    Serial.println("✅ RTC DS3231: ready");
-// #endif
-//    return true;
-// }
-
 bool RtcDs3231Time::begin()
 {
    Serial.println("[RTC] begin() called");
@@ -120,46 +94,6 @@ bool RtcDs3231Time::getMinutesOfDay(uint16_t &minutes)
    return true;
 }
 
-// bool RtcDs3231Time::setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second)
-// {
-//    if (!_isOk)
-//    {
-// #if DEBUG_TIME_LOG
-//       Serial.println("[RTC] setTimeOfDay: RTC not initialized");
-// #endif
-//       return false;
-//    }
-
-//    // อ่าน datetime ปัจจุบันมาเอา "ปี-เดือน-วัน" เดิม
-//    DateTime now = _rtc.now();
-
-//    // clamp ค่าเบื้องต้นกันพลาด
-//    if (hour > 23)
-//       hour = 23;
-//    if (minute > 59)
-//       minute = 59;
-//    if (second > 59)
-//       second = 59;
-
-//    DateTime newDt(
-//        now.year(),
-//        now.month(),
-//        now.day(),
-//        hour,
-//        minute,
-//        second);
-
-//    _rtc.adjust(newDt);
-
-// #if DEBUG_TIME_LOG
-//    Serial.printf("[RTC] setTimeOfDay => %04d-%02d-%02d %02u:%02u:%02u\n",
-//                  newDt.year(), newDt.month(), newDt.day(),
-//                  (unsigned)hour,
-//                  (unsigned)minute,
-//                  (unsigned)second);
-// #endif
-//    return true;
-// }
 bool RtcDs3231Time::setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second)
 {
    if (!_isOk)
