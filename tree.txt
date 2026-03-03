@@ -26,7 +26,6 @@
 │   │   ├── Esp32ModeSwitchSource.h
 │   │   ├── Esp32WebUi.h
 │   │   ├── Esp32WiFiNetwork.h
-│   │   ├── FakeClock.h
 │   │   ├── GlobalState.h
 │   │   ├── NetTimeSync.h
 │   │   ├── RtcClock.h
@@ -80,4 +79,4 @@
 │   └── README
 └── tree.txt
 
-18 directories, 63 files
+18 directories, 62 files

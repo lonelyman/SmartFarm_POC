@@ -34,7 +34,7 @@
 - `include/` – headers (Interfaces, Types, Domain APIs, Application APIs, Infrastructure)
 - `src/` – implementation (drivers, tasks, main, domain logic)
 - `lib/` – ไลบรารีเฉพาะโปรเจค (แพลตฟอร์ม PlatformIO)
-- `test/` – โค้ดสำหรับ unit test (PlatformIO Test Runner)
+- `test/` – โค้ดสำหรับ unit test (PlatformIO Test Runner). ตัวอย่างมี `test_farmmanager.cpp` ทดสอบ logic ของ FarmManager
 - `platformio.ini` – การตั้งค่า build/board/library
 - `tree.txt` – snapshot โครงสร้างโปรเจค
 
@@ -81,6 +81,12 @@
 
 ## 🔌 Hardware & IO Overview
 
+**Config constants**
+
+หลายค่าที่ยกขึ้นมาก่อนหน้า (เช่น hysteresis อุณหภูมิสำหรับ mist,
+debounce สำหรับสวิตช์เน็ต, ช่วงเวลาเริ่ม/เลิกปั๊มลม) ถูกย้ายไป
+`include/Config.h` เป็น `constexpr` เพื่อให้ปรับได้ง่ายโดยไม่ต้องแตะ logic.
+
 ### คอนฟิกบนบอร์ด
 
 - **บอร์ด**: ESP32 DOIT DEVKIT V1
@@ -111,6 +117,7 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 
 - **Light**: BH1750 (I2C)
 - **Temperature**: `Esp32FakeTemperature` (ตอนนี้ยังเป็น fake)
+- **Water‑level**: analog input via `Esp32WaterLevelInput` (ยังไม่ถูกใช้งานจริง)
 - **Relays**: ต่อย SSR / โมดูลรีเลย์ (ปั๊มน้ำ / หมอก / ปั๊มลม)
 
 ### สวิตช์เลือกโหมด
@@ -192,13 +199,15 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 
 ### Time Source
 
-- คอนฟิกใน `Config.h`:
-  - `#define USE_FAKE_TIME` (ถ้าไม่มี RTC หรือทดสอบ)
-  - `FAKE_MINUTES_OF_DAY` กำหนดค่า static
-- หาก **ไม่**ใช้ fake time:
-  - `AppBoot` จะเรียก `ctx.clock->begin()` (ปัจจุบันเป็น `RtcDs3231Time` adapter)
-  - `ControlTask` อ่านเวลา `getMinutesOfDay()` และเรียก `NetTimeSync` เมื่อจำเป็น
-  - `NetTimeSync::syncRtcFromNtp()` สามารถตั้ง RTC จากอินเทอร์เน็ต (ต้อง config Wi‑Fi/NTP ใน `Config.h`)
+- ระบบจะใช้ DS3231 RTC เป็นแหล่งนาฬิกาเดียว
+- ใน `Config.h` มีคำอธิบายว่าวิธีทำงานหากติดต่อกับ RTC ไม่สำเร็จ:
+  เมื่อเรียก `ctx.clock->begin()` (จาก `AppBoot`) หาก `RtcDs3231Time::begin()` คืนค่า false
+  _หมายความว่าอุปกรณ์ไม่ตอบหรือ I2C มีปัญหา_ – ต่อไปการเรียก
+  `getMinutesOfDay()`/`getTimeOfDay()` จะคืนค่า false และส่ง `minutes=0`.
+  ControlTask จะบันทึก warning และ schedule จะถูกปิด (เพราะเวลาไม่ถูกต้อง).
+- `ControlTask` จะอ่านเวลา `getMinutesOfDay()` และโยนให้ `FarmManager`.
+- เมื่อมีการเชื่อมต่ออินเทอร์เน็ต NetworkTask จะใช้ `NetTimeSync::syncRtcFromNtp()`
+  เพื่อปรับ RTC ตาม NTP (`pool.ntp.org` – ต้องตั้งค่า Wi‑Fi/NTP ใน `Config.h`).
 
 ### Air Pump Schedule
 
@@ -208,13 +217,13 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 
 ```json
 {
-  "air_pump": {
-    "enabled": true,
-    "windows": [
-      { "start": "07:00", "end": "12:00" },
-      { "start": "14:00", "end": "17:30" }
-    ]
-  }
+   "air_pump": {
+      "enabled": true,
+      "windows": [
+         { "start": "07:00", "end": "12:00" },
+         { "start": "14:00", "end": "17:30" }
+      ]
+   }
 }
 ```
 
@@ -229,11 +238,11 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 
 ## 📡 Network & NTP
 
-เมื่อมี Wi‑Fi credential ใน `Config.h`:
-
-- `NetTimeSync::connectWifiIfNeeded()` จะเชื่อมต่อก่อน
-- `NetTimeSync::syncRtcFromNtp()` ใช้ NTP (`pool.ntp.org`) เพื่ออัปเดต RTC
-- ปัจจุบันเรียกจาก `main.cpp` หรือเมนูเฉพาะ
+- เรื่อง Wi‑Fi ถูกมอบหมายให้ **NetworkTask** (ดู `src/tasks/NetworkTask.cpp`) ซึ่งเป็นเจ้าของการ connect/maintain และจะให้บริการคำสั่งจาก `Esp32WebUi` เมื่อใช้เว็บ UI.
+- เมื่อเน็ตเวิร์กพร้อมแล้ว `NetTimeSync` ก็ถูกเรียกผ่าน NetworkTask เพื่อซิงค์เวลา
+  (`connectWifiIfNeeded()`/`syncRtcFromNtp()`).
+- หากมี Wi‑Fi credential ใน `Config.h` และ `NetworkTask` ยืนยันการเชื่อมต่อไว้แล้ว, การ sync จาก `pool.ntp.org` จะอัปเดต RTC ได้อัตโนมัติ
+- เรียก manual จาก Serial หรือเมนูเว็บได้เช่นเดิม
 
 ---
 
@@ -264,10 +273,11 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
    - initialises I2C, LittleFS, drivers, clock
    - โหลด air schedule ถ้ามี
    - กำหนดโหมดเริ่มต้นเป็น `IDLE`
-   - สตาร์ท tasks (input/control/command)
-2. **InputTask** (~1 s): อ่านเซนเซอร์ (lux, temp), อัปเดต `SharedState`
-3. **CommandTask** (~50 ms): รอรับ Serial, parse คำสั่ง, แก้ `SharedState` (mode, overrides, time request)
-4. **ControlTask** (~1 s):
+   - สตาร์ท tasks (network/input/control/command)
+2. **NetworkTask** (~1 s): ดูแลการเชื่อมต่อ Wi‑Fi/อินเทอร์เน็ต, รับคำสั่งจาก `Esp32WebUi` และเรียก `NetTimeSync` เมื่อจำเป็น
+3. **InputTask** (~1 s): อ่านเซนเซอร์ (lux, temp, water level), อัปเดต `SharedState`
+4. **CommandTask** (~50 ms): รอรับ Serial, parse คำสั่ง, แก้ `SharedState` (mode, overrides, time request)
+5. **ControlTask** (~1 s):
    - ประมวลคำขอตั้งเวลา → apply to `IClock`
    - อ่านเวลา (`IClock`) หรือ fake
    - ดึง snapshot + manual overrides
@@ -285,4 +295,3 @@ SmartFarm_POC maintainers
 ---
 
 > **หมายเหตุ:** README นี้อัปเดตตามการ refactor ล่าสุด ตรวจสอบให้แน่ใจว่า **กฎแยกเลเยอร์ยังคงปฏิบัติอยู่** และฟังก์ชันทั้งหมดใช้ `SystemContext`/`SharedState` อย่างถูกต้อง
-

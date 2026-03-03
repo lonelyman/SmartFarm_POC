@@ -40,7 +40,7 @@ static void handleStaSwitchToNetCommand(SharedState *state, bool staSwitch)
 		return;
 	}
 
-	if ((now - lastChangeMs) < 80)
+	if ((now - lastChangeMs) < NET_SWITCH_DEBOUNCE_MS)
 		return; // debounce
 
 	if (stable == lastRead)
