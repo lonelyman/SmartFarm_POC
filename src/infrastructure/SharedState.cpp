@@ -85,6 +85,7 @@ void SharedState::requestNetOn()
       _netCmd.type = NetCmdType::NetOn;
       xSemaphoreGive(_mutex);
    }
+   Serial.println("✅ [STATE] requestNetOn set pending");
 }
 
 void SharedState::requestNetOff()
@@ -109,18 +110,21 @@ void SharedState::requestSyncNtp()
 
 bool SharedState::consumeNetCommand(NetCommand &out)
 {
+   bool ok = false;
    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
    {
-      if (!_netCmd.pending)
+      if (_netCmd.pending)
       {
-         xSemaphoreGive(_mutex);
-         return false;
+         out = _netCmd;
+         _netCmd.pending = false;
+         ok = true;
       }
-      out = _netCmd;
-      _netCmd.pending = false;
-      _netCmd.type = NetCmdType::None;
       xSemaphoreGive(_mutex);
-      return true;
    }
-   return false;
+
+   if (ok)
+   {
+      Serial.printf("✅ [STATE] consumeNetCommand type=%d\n", (int)out.type);
+   }
+   return ok;
 }

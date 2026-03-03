@@ -50,8 +50,6 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 #define ENABLE_WATER_LEVEL_CH2 0 // ถ้าไม่มีเซนเซอร์ CH2 ให้ disable เพื่อลด false alarm
 
 // ==== Network & Time Config ====
-#define WIFI_SSID "S21-Ult-Nip"
-#define WIFI_PASSWORD "ppvz7847"
 
 #define NTP_SERVER "pool.ntp.org"
 // เวลาไทย = UTC+7

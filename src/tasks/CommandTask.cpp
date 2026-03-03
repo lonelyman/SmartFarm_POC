@@ -272,6 +272,7 @@ void commandTask(void *pvParameters)
         {
             ctx->state->requestNetOn();
             Serial.println("[CMD] net on requested");
+            Serial.printf("CMD state=%p\n", ctx->state);
         }
         else if (lower == "-net off")
         {
