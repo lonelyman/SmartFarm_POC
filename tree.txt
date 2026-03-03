@@ -17,6 +17,7 @@
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.h
 │   │   ├── Esp32FakeTemperature.h
+│   │   ├── Esp32NetModeSwitch.h
 │   │   ├── Esp32Relay.h
 │   │   ├── Esp32WaterLevelInput.h
 │   │   └── RtcDs3231Time.h
@@ -38,6 +39,7 @@
 │   │   ├── IActuator.h
 │   │   ├── IClock.h
 │   │   ├── IModeSource.h
+│   │   ├── INetModeSource.h
 │   │   ├── INetwork.h
 │   │   ├── ISensor.h
 │   │   ├── IUi.h
@@ -56,6 +58,7 @@
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.cpp
 │   │   ├── Esp32FakeTemperature.cpp
+│   │   ├── Esp32NetModeSwitch.cpp
 │   │   ├── Esp32Relay.cpp
 │   │   └── RtcDs3231Time.cpp
 │   ├── infrastructure
@@ -77,4 +80,4 @@
 │   └── README
 └── tree.txt
 
-18 directories, 60 files
+18 directories, 63 files

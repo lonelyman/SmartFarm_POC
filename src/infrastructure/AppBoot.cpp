@@ -1,5 +1,4 @@
-
-
+// src/infrastructure/AppBoot.cpp
 #include <Arduino.h>
 #include <Wire.h>
 #include <LittleFS.h>
@@ -56,6 +55,16 @@ namespace
          return;
       }
       ctx.modeSource->begin();
+   }
+
+   void initNetModeSource(SystemContext &ctx)
+   {
+      if (ctx.netModeSource == nullptr)
+      {
+         Serial.println("⚠️ netModeSource is null (net switch disabled)");
+         return;
+      }
+      ctx.netModeSource->begin();
    }
 
    void initDrivers(SystemContext &ctx)
@@ -128,9 +137,8 @@ void AppBoot::setup(SystemContext &ctx)
    initI2C();
    initFileSystemAndSchedule(*ctx.airSchedule);
 
-   // ✅ แทน initModeSwitchPins() ด้วย ModeSource (Adapter)
    initModeSource(ctx);
-
+   initNetModeSource(ctx);
    initClock(ctx);
    initDrivers(ctx);
    initNetwork(ctx);

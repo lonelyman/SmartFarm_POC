@@ -134,6 +134,19 @@
          .row .grow {
             flex: 1;
          }
+
+         .pill {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1;
+         }
+
          .btn {
             width: 100%;
             margin-top: 14px;
@@ -179,6 +192,17 @@
             font-size: 12.5px;
             line-height: 1.4;
          }
+         .ok {
+            display: none;
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            background: rgba(34, 197, 94, 0.1);
+            color: #ccffe0;
+            font-size: 12.5px;
+            line-height: 1.4;
+         }
          .foot {
             padding: 12px 16px 16px;
             border-top: 1px solid var(--line);
@@ -188,6 +212,9 @@
          }
          a {
             color: var(--accent);
+         }
+         code {
+            color: #cfe3ff;
          }
       </style>
    </head>
@@ -209,6 +236,7 @@
                   เครื่องจะบันทึก
                   <code>/wifi.json</code> และรีบูตเพื่อเชื่อมต่อแบบอัตโนมัติ
                </div>
+               <div class="pill" id="cfgHint">กำลังโหลดค่าเดิม...</div>
             </header>
 
             <form method="POST" action="/save" id="wifiForm">
@@ -241,19 +269,19 @@
                   >
                </div>
 
+               <div class="ok" id="okBox"></div>
                <div class="err" id="errBox"></div>
 
                <button class="btn" type="submit">Save & Reboot</button>
                <div class="sub">
-                  ถ้าเชื่อมต่อไม่ติด: ตรวจสอบรหัสผ่าน / WPA2-PSK / 2.4GHz
-                  และลองใหม่อีกครั้ง
+                  บันทึกแล้วเครื่องจะรีบูต เข้าผ่าน AP ที่ <b>192.168.4.1</b
+                  ><br />
+                  ถ้าต้องการให้ออกเน็ต ให้กด <b>Connect STA</b> เพื่อเชื่อมต่อ
+                  Wi-Fi
                </div>
             </form>
 
-            <div class="foot">
-               หมายเหตุ: ถ้า Wi-Fi ต่อไม่สำเร็จ เครื่องจะกลับมาโหมด AP อีกครั้ง
-               (SSID: <b>SmartFarm-Setup</b>)
-            </div>
+            <div class="foot">AP (SSID: <b>SmartFarm-Setup</b>)</div>
          </div>
       </div>
 
@@ -264,9 +292,62 @@
             pass.type = showPass.checked ? "text" : "password";
          });
 
-         // client-side validate แบบเบาๆ
          const form = document.getElementById("wifiForm");
          const errBox = document.getElementById("errBox");
+         const okBox = document.getElementById("okBox");
+         const cfgHint = document.getElementById("cfgHint");
+
+         function showErr(msg) {
+            okBox.style.display = "none";
+            okBox.textContent = "";
+            errBox.textContent = msg;
+            errBox.style.display = "block";
+         }
+
+         function showOk(msg) {
+            errBox.style.display = "none";
+            errBox.textContent = "";
+            okBox.textContent = msg;
+            okBox.style.display = "block";
+         }
+
+         async function loadOldConfig() {
+            try {
+               const res = await fetch("/api/wifi/config", {
+                  cache: "no-store",
+               });
+               if (!res.ok) throw new Error("HTTP " + res.status);
+               const cfg = await res.json();
+
+               const ssidEl = document.getElementById("ssid");
+
+               if (
+                  cfg &&
+                  typeof cfg.ssid === "string" &&
+                  cfg.ssid.trim().length > 0
+               ) {
+                  ssidEl.value = cfg.ssid;
+               }
+
+               // เรา "ไม่เติม" password ให้ (ปลอดภัยกว่า) แต่บอกสถานะว่ามี/ไม่มี
+               if (cfg && cfg.hasPassword) {
+                  cfgHint.textContent =
+                     "พบค่าเดิม: SSID ถูกบันทึกไว้ และมี Password";
+                  showOk(
+                     "โหลดค่าเดิมแล้ว (SSID). ถ้าต้องการเปลี่ยนรหัสผ่าน ให้กรอกใหม่แล้วกด Save",
+                  );
+               } else if (cfg && cfg.hasConfig) {
+                  cfgHint.textContent = "พบค่าเดิม: SSID ถูกบันทึกไว้";
+               } else {
+                  cfgHint.textContent = "ยังไม่เคยตั้งค่า Wi-Fi";
+               }
+            } catch (e) {
+               cfgHint.textContent = "โหลดค่าเดิมไม่สำเร็จ";
+               // ไม่ถือว่า fatal เพราะยังกรอกเองได้
+            }
+         }
+
+         // client-side validate แบบเบาๆ
          form.addEventListener("submit", (e) => {
             errBox.style.display = "none";
             errBox.textContent = "";
@@ -274,10 +355,12 @@
             const ssid = (document.getElementById("ssid").value || "").trim();
             if (!ssid) {
                e.preventDefault();
-               errBox.textContent = "กรุณากรอก SSID";
-               errBox.style.display = "block";
+               showErr("กรุณากรอก SSID");
+               return;
             }
          });
+
+         loadOldConfig();
       </script>
    </body>
 </html>

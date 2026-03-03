@@ -1,3 +1,4 @@
+// include/infrastructure/SystemContext.h
 #pragma once
 
 #include "infrastructure/SharedState.h"
@@ -6,6 +7,7 @@
 #include "interfaces/IModeSource.h"
 #include "interfaces/IClock.h"
 #include "interfaces/IUi.h"
+#include "interfaces/INetModeSource.h"
 
 #include "domain/AirPumpSchedule.h"
 
@@ -42,6 +44,9 @@ struct SystemContext
 
    // Mode source
    IModeSource *modeSource;
+
+   // Net mode source (AP/STA switch)
+   INetModeSource *netModeSource;
    // Brain
    FarmManager *manager;
 };
