@@ -2,6 +2,7 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <ESP.h>
+
 #include "infrastructure/Esp32WebUi.h"
 #include "infrastructure/WifiConfigStore.h"
 
@@ -74,13 +75,39 @@ void Esp32WebUi::registerRoutes()
    _server.on("/", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/dashboard.html", "text/html; charset=utf-8"); });
 
-   // ✅ WiFi setup page (หน้าเดิมของคุณ)
+   // WiFi setup page
    _server.on("/wifi", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi.html", "text/html; charset=utf-8"); });
 
-   // ✅ Saved page (เผื่อเรียกตรง ๆ ได้ / หรือใช้จาก provisioning ก็ได้)
+   // Saved page
    _server.on("/wifi-saved", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8"); });
+
+   // -------------------- NEW: Load existing WiFi config --------------------
+   // GET /api/wifi/config -> {hasConfig, ssid, hasPassword, hostname}
+   _server.on("/api/wifi/config", HTTP_GET, [&]()
+              {
+      WifiConfigStore store("/wifi.json");
+      WifiConfig cfg;
+      bool ok = store.load(cfg) && cfg.isValid();
+
+      String ssid = ok ? cfg.ssid : "";
+      String hn   = ok ? cfg.hostname : "";
+
+      bool hasPw = false;
+      if (ok) {
+         // ถ้าอยากถือว่า password ว่าง = ไม่มี ก็ใช้ length()>0
+         hasPw = (cfg.password.length() > 0);
+      }
+
+      String json = "{";
+      json += "\"hasConfig\":" + String(ok ? 1 : 0) + ",";
+      json += "\"ssid\":\"" + ssid + "\",";
+      json += "\"hasPassword\":" + String(hasPw ? 1 : 0) + ",";
+      json += "\"hostname\":\"" + hn + "\"";
+      json += "}";
+
+      _server.send(200, "application/json; charset=utf-8", json); });
 
    // STATUS JSON (+ network fields + netMsg)
    _server.on("/api/status", HTTP_GET, [&]()
@@ -116,13 +143,11 @@ void Esp32WebUi::registerRoutes()
       json += "\"apIp\":\"" + apIp.toString() + "\",";
       json += "\"staIp\":\"" + staIp.toString() + "\",";
 
-      // ✅ UI feedback message
       json += "\"netMsg\":\"" + String(netMsg) + "\"";
-
       json += "}";
       _server.send(200, "application/json; charset=utf-8", json); });
 
-   // (เผื่ออนาคต) mode control
+   // mode control
    _server.on("/api/mode/auto", HTTP_POST, [&]()
               { _ctx.state->setMode(SystemMode::AUTO); _server.send(204); });
    _server.on("/api/mode/manual", HTTP_POST, [&]()
@@ -138,62 +163,31 @@ void Esp32WebUi::registerRoutes()
    _server.on("/api/ntp", HTTP_POST, [&]()
               { _ctx.state->requestSyncNtp(); _server.send(204); });
 
-   // ---------- WIFI PAGES (single server) ----------
-
-   // GET /wifi -> serve wifi.html
-   _server.on("/wifi", HTTP_GET, [&]()
-              {
-   File f = LittleFS.open("/www/wifi.html", "r");
-   if (!f) {
-      _server.send(500, "text/plain; charset=utf-8", "wifi.html not found in LittleFS: /www/wifi.html");
-      return;
-   }
-   _server.streamFile(f, "text/html; charset=utf-8");
-   f.close(); });
-
-   // (optional) GET /saved -> serve wifi-saved.html (ไว้ทดสอบ)
-   _server.on("/saved", HTTP_GET, [&]()
-              {
-   File f = LittleFS.open("/www/wifi-saved.html", "r");
-   if (!f) {
-      _server.send(404, "text/plain; charset=utf-8", "wifi-saved.html not found in LittleFS: /www/wifi-saved.html");
-      return;
-   }
-   _server.streamFile(f, "text/html; charset=utf-8");
-   f.close(); });
-
    // POST /save -> save /wifi.json -> show saved page -> reboot
    _server.on("/save", HTTP_POST, [&]()
               {
-   String ssid = _server.arg("ssid");
-   String pass = _server.arg("password");
-   ssid.trim();
+      String ssid = _server.arg("ssid");
+      String pass = _server.arg("password");
+      ssid.trim();
 
-   if (ssid.length() == 0) {
-      _server.send(400, "text/plain; charset=utf-8", "SSID is required");
-      return;
-   }
+      if (ssid.length() == 0) {
+         _server.send(400, "text/plain; charset=utf-8", "SSID is required");
+         return;
+      }
 
-   WifiConfigStore store("/wifi.json");
-   WifiConfig cfg;
-   cfg.ssid = ssid;
-   cfg.password = pass;
-   cfg.hostname = "smartfarm";
+      WifiConfigStore store("/wifi.json");
+      WifiConfig cfg;
+      cfg.ssid = ssid;
+      cfg.password = pass;
+      cfg.hostname = "smartfarm";
 
-   if (!store.save(cfg)) {
-      _server.send(500, "text/plain; charset=utf-8", "Save failed");
-      return;
-   }
+      if (!store.save(cfg)) {
+         _server.send(500, "text/plain; charset=utf-8", "Save failed");
+         return;
+      }
 
-   // ส่งหน้า saved.html ให้ browser เห็นผล
-   File f = LittleFS.open("/www/wifi-saved.html", "r");
-   if (f) {
-      _server.streamFile(f, "text/html; charset=utf-8");
-      f.close();
-   } else {
-      _server.send(200, "text/plain; charset=utf-8", "Saved. Rebooting...");
-   }
+      serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8");
 
-   delay(1200);
-   ESP.restart(); });
+      delay(1200);
+      ESP.restart(); });
 }

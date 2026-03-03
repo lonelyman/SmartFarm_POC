@@ -14,6 +14,45 @@
 
 // ---------- Helpers ----------
 
+static void handleStaSwitchToNetCommand(SharedState *state, bool staSwitch)
+{
+	static bool stable = false;
+	static bool lastRead = false;
+	static uint32_t lastChangeMs = 0;
+	static bool inited = false;
+
+	if (!state)
+		return;
+
+	uint32_t now = millis();
+	if (!inited)
+	{
+		stable = lastRead = staSwitch;
+		lastChangeMs = now;
+		inited = true;
+		return;
+	}
+
+	if (staSwitch != lastRead)
+	{
+		lastRead = staSwitch;
+		lastChangeMs = now;
+		return;
+	}
+
+	if ((now - lastChangeMs) < 80)
+		return; // debounce
+
+	if (stable == lastRead)
+		return;
+
+	stable = lastRead;
+	if (stable)
+		state->requestNetOn();
+	else
+		state->requestNetOff();
+}
+
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
 {
 	uint16_t hh = minutesOfDay / 60;
@@ -115,6 +154,10 @@ void inputTask(void *pvParameters)
 		Serial.printf("[InputTask] Temp=%.2f valid=%d\n", t.value, t.isValid ? 1 : 0);
 #endif
 
+		// --- Network switch -> NetCommand ---
+		bool staSwitch = (digitalRead(PIN_SW_NET_AP) == HIGH);
+		handleStaSwitchToNetCommand(ctx->state, staSwitch);
+
 		vTaskDelay(pdMS_TO_TICKS(INPUT_TASK_INTERVAL_MS));
 	}
 }
@@ -166,7 +209,7 @@ void controlTask(void *pvParameters)
 		// 2) Read snapshot + manual overrides
 		SystemStatus status = ctx->state->getSnapshot();
 		ManualOverrides manual = ctx->state->getManualOverrides();
-		
+
 		updateWaterLevelAlarmLeds(status.waterLevelSensors);
 
 		// 3) Update mode from source (adapter) -> sync to SharedState (inside function)

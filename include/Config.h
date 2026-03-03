@@ -24,9 +24,13 @@ constexpr int PIN_WATER_LEVEL_CH2_LOW_SENSOR = 33;
 constexpr int PIN_WATER_LEVEL_CH1_ALARM_LED = 23;
 constexpr int PIN_WATER_LEVEL_CH2_ALARM_LED = 19;
 
-// ====================== SWITCH INPUTS (ปุ่มหน้าตู้ / สวิตช์โหมด) ========
+// ====================== SWITCH INPUTS (ปุ่มหน้าตู้ / สวิตช์โหมด AUTO/IDLE/MANUAL) ========
 constexpr int PIN_SW_MODE_A = 34;
 constexpr int PIN_SW_MODE_B = 35;
+
+// ====================== NETWORK SWITCH (AP/STA) ======================
+constexpr int PIN_SW_NET_AP  = 36;  // GPIO36 (VP) input-only
+constexpr int PIN_SW_NET_STA = 39;  // GPIO39 (VN) input-only
 
 
 // ====================== ปรับเวลา debounce ปุ่ม (ms) ======================

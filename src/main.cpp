@@ -9,6 +9,7 @@
 #include "drivers/Esp32Relay.h"
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32WaterLevelInput.h"
+#include "drivers/Esp32NetModeSwitch.h"
 
 #include "application/FarmManager.h"
 
@@ -26,7 +27,7 @@
 SharedState state;
 
 AirPumpSchedule airSchedule;
-
+Esp32NetModeSwitch gNetSwitch(PIN_SW_NET_AP, PIN_SW_NET_STA);
 Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
 Esp32WiFiNetwork wifiNet;
 // Sensors
@@ -68,7 +69,8 @@ static SystemContext ctx{
     &sysClock,   // clock
     &wifiNet,    // network
     &modeSource, // modeSource
-    &manager,    // manager
+    &gNetSwitch,
+    &manager, // manager
 };
 
 static Esp32WebUi webUi(ctx, 80);
