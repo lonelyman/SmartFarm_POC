@@ -120,6 +120,20 @@ constexpr int PIN_SW_CLEAR  = 36; // ยังไม่ใช้
 - **Water‑level**: analog input via `Esp32WaterLevelInput` (ยังไม่ถูกใช้งานจริง)
 - **Relays**: ต่อย SSR / โมดูลรีเลย์ (ปั๊มน้ำ / หมอก / ปั๊มลม)
 
+### สวิตช์โหมดเครือข่าย
+
+- มีสวิตช์ทางกายภาพสองตัว (pins `PIN_SW_NET_AP` และ `PIN_SW_NET_STA`)
+- ปกติอ่านค่าเป็น HIGH/LOW แล้ว `NetworkTask` จะสั่งให้ระบบ
+  `requestNetOn()` / `requestNetOff()` ตามความต้องการ
+- ตำแหน่งสวิตช์กำหนดโหมดที่ต้องการ:
+   - AP PRIMARY = เปิดเป็น Access Point (ใช้ในการตั้งค่า Wi‑Fi หรือเมื่อ
+     ไม่มีการเชื่อมต่ออยู่)
+   - STA = เปิดเฉพาะสถานะลูกข่าย หากมี config อยู่ จะพยายาม
+     เชื่อมต่อเข้า Wi‑Fi ที่บันทึกไว้
+- การสลับจะทำงานแบบ edge‑trigger debounced (แก้ไขเวลาใน `Config.h`)
+- วิธีนี้ให้ผู้ใช้สามารถบังคับให้บอร์ดอยู่ใน AP‑only หรือพยายามเชื่อม
+  Internet ได้ทันทีโดยไม่ต้องใช้ Serial หรือเว็บ
+
 ### สวิตช์เลือกโหมด
 
 - A = HIGH, B = HIGH → `IDLE`
