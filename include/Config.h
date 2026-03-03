@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ====================== I2C BUS (สำหรับ BH1750 ฯลฯ) ======================
+// ====================== I2C BUS  ======================
 constexpr int PIN_I2C_SDA = 21;
 constexpr int PIN_I2C_SCL = 22;
 
@@ -16,10 +16,6 @@ constexpr int PIN_RELAY_FREE2 = 16;
 constexpr int PIN_RELAY_FREE3 = 17;
 constexpr int PIN_RELAY_FREE4 = 14;
 
-// ====================== ANALOG INPUTS (EC / อื่น ๆ) ======================
-constexpr int PIN_ANALOG_EC = 0;
-constexpr int PIN_ANALOG_FREE = 0;
-
 // ====================== WATER LEVEL SENSORS (XKC-Y25) ======================
 constexpr int PIN_WATER_LEVEL_CH1_LOW_SENSOR = 32;
 constexpr int PIN_WATER_LEVEL_CH2_LOW_SENSOR = 33;
@@ -31,8 +27,7 @@ constexpr int PIN_WATER_LEVEL_CH2_ALARM_LED = 19;
 // ====================== SWITCH INPUTS (ปุ่มหน้าตู้ / สวิตช์โหมด) ========
 constexpr int PIN_SW_MODE_A = 34;
 constexpr int PIN_SW_MODE_B = 35;
-constexpr int PIN_SW_CLEAR = 36;
-constexpr int PIN_SW_FREE = 39;
+
 
 // ====================== ปรับเวลา debounce ปุ่ม (ms) ======================
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;

@@ -128,3 +128,33 @@ bool SharedState::consumeNetCommand(NetCommand &out)
    }
    return ok;
 }
+
+void SharedState::setNetMessage(const char *msg)
+{
+   if (!msg)
+      return;
+
+   if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+   {
+      strncpy(_netMsg, msg, sizeof(_netMsg) - 1);
+      _netMsg[sizeof(_netMsg) - 1] = '\0';
+      xSemaphoreGive(_mutex);
+   }
+}
+
+void SharedState::getNetMessage(char *out, size_t outLen)
+{
+   if (!out || outLen == 0)
+      return;
+
+   if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+   {
+      strncpy(out, _netMsg, outLen - 1);
+      out[outLen - 1] = '\0';
+      xSemaphoreGive(_mutex);
+   }
+   else
+   {
+      out[0] = '\0';
+   }
+}

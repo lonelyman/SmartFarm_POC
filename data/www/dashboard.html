@@ -1,7 +1,9 @@
 <!doctype html>
 <html>
    <head>
+      <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>SmartFarm Local UI</title>
       <style>
          body {
             background: #0b0f17;
@@ -9,86 +11,278 @@
             font-family: Arial;
             margin: 16px;
          }
+
+         .header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+         }
+
+         .header h3 {
+            margin: 0;
+            font-size: 18px;
+            line-height: 1.2;
+         }
+
+         .hint {
+            color: #94a3b8;
+            font-size: 12px;
+            line-height: 1.35;
+            text-align: right;
+            max-width: 260px;
+         }
+
          .grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
          }
+
          .card {
             background: #0f172a;
             border: 1px solid #1f2937;
             border-radius: 12px;
             padding: 12px;
+            overflow: hidden;
          }
+
          .title {
             color: #94a3b8;
             font-size: 13px;
             margin-bottom: 6px;
          }
+
          .value {
             font-size: 24px;
             font-weight: 700;
+            word-break: break-word;
          }
+
+         .sub {
+            color: #94a3b8;
+            font-size: 12px;
+         }
+
+         .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 6px 0;
+         }
+
+         .row .label {
+            color: #e5e7eb;
+            font-size: 13px;
+         }
+
          .pill {
             padding: 4px 10px;
             border-radius: 999px;
             font-size: 12px;
             font-weight: 700;
+            white-space: nowrap;
          }
+
          .ok {
             background: #064e3b;
             color: #a7f3d0;
          }
+
          .bad {
             background: #7f1d1d;
             color: #fecaca;
          }
+
+         .btnRow {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+         }
+
+         .btn {
+            appearance: none;
+            border: 1px solid #1f2937;
+            background: #020617;
+            color: #e5e7eb;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            flex: 1 1 160px;
+         }
+
+         .btn:active {
+            transform: translateY(1px);
+         }
+
+         .btn.primary {
+            border-color: #064e3b;
+         }
+
+         .btn.danger {
+            border-color: #7f1d1d;
+         }
+
+         .btn.neutral {
+            border-color: #1f2937;
+         }
+
+         .tipBox {
+            background: #020617;
+            border: 1px solid #1f2937;
+            border-radius: 10px;
+            padding: 10px;
+            margin-top: 10px;
+         }
+
+         .tipTitle {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-bottom: 6px;
+         }
+
+         .tipText {
+            font-size: 13px;
+            line-height: 1.4;
+            word-break: break-word;
+         }
+
+         a {
+            color: #22c55e;
+            text-decoration: none;
+         }
+
          pre {
             background: #020617;
             color: #22c55e;
             padding: 10px;
             border-radius: 10px;
             overflow: auto;
+            font-size: 12px;
+            line-height: 1.35;
+            margin: 0;
          }
+
          @media (max-width: 520px) {
+            body {
+               margin: 12px;
+            }
+            .header {
+               flex-direction: column;
+               align-items: stretch;
+               gap: 6px;
+            }
+            .hint {
+               text-align: left;
+               max-width: none;
+            }
             .grid {
                grid-template-columns: 1fr;
+            }
+            .value {
+               font-size: 22px;
+            }
+            .btn {
+               flex: 1 1 100%;
             }
          }
       </style>
    </head>
+
    <body>
-      <h3>SmartFarm Local UI</h3>
+      <div class="header">
+         <h3>SmartFarm Local UI</h3>
+         <div class="hint">
+            Offline-first (AP): <b>http://192.168.4.1</b><br />
+            ถ้าเชื่อม STA สำเร็จ จะต้องย้ายไป IP ใหม่ใน LAN
+         </div>
+      </div>
 
       <div class="grid">
+         <!-- MODE -->
          <div class="card">
             <div class="title">MODE</div>
             <div class="value" id="modeText">-</div>
-            <div class="title">raw</div>
-            <div id="modeId">-</div>
+            <div class="sub">raw: <span id="modeId">-</span></div>
          </div>
 
+         <!-- NETWORK -->
+         <div class="card">
+            <div class="title">NETWORK</div>
+
+            <div class="row">
+               <div class="label">AP IP</div>
+               <div class="pill ok" id="apIpPill">-</div>
+            </div>
+
+            <div class="row">
+               <div class="label">STA</div>
+               <div class="pill" id="staConnPill">-</div>
+            </div>
+
+            <div class="row">
+               <div class="label">STA IP</div>
+               <div class="pill" id="staIpPill">-</div>
+            </div>
+
+            <div class="btnRow">
+               <button class="btn neutral" id="btnWifi" type="button">
+                  Set WiFi
+               </button>
+               <button class="btn primary" id="btnNetToggle" type="button">
+                  Connect STA
+               </button>
+            </div>
+
+            <div class="tipBox">
+               <div class="tipTitle">TIP</div>
+               <div class="tipText" id="tip">-</div>
+            </div>
+         </div>
+
+         <!-- ACTUATORS -->
          <div class="card">
             <div class="title">ACTUATORS</div>
-            <div>PUMP: <span class="pill" id="pumpPill">-</span></div>
-            <br />
-            <div>MIST: <span class="pill" id="mistPill">-</span></div>
-            <br />
-            <div>AIR : <span class="pill" id="airPill">-</span></div>
+            <div class="row">
+               <div class="label">PUMP</div>
+               <span class="pill" id="pumpPill">-</span>
+            </div>
+            <div class="row">
+               <div class="label">MIST</div>
+               <span class="pill" id="mistPill">-</span>
+            </div>
+            <div class="row">
+               <div class="label">AIR</div>
+               <span class="pill" id="airPill">-</span>
+            </div>
          </div>
 
+         <!-- LIGHT -->
          <div class="card">
             <div class="title">LIGHT (BH1750)</div>
             <div class="value"><span id="lux">-</span> lux</div>
-            <div class="pill" id="luxValidPill">-</div>
+            <div class="row" style="margin-top: 10px">
+               <div class="label">Status</div>
+               <div class="pill" id="luxValidPill">-</div>
+            </div>
          </div>
 
+         <!-- TEMPERATURE -->
          <div class="card">
             <div class="title">TEMPERATURE</div>
             <div class="value"><span id="temp">-</span> °C</div>
-            <div class="pill" id="tempValidPill">-</div>
+            <div class="row" style="margin-top: 10px">
+               <div class="label">Status</div>
+               <div class="pill" id="tempValidPill">-</div>
+            </div>
          </div>
 
+         <!-- RAW JSON -->
          <div class="card" style="grid-column: 1/-1">
             <div class="title">RAW JSON</div>
             <pre id="raw">loading...</pre>
@@ -100,15 +294,45 @@
             el.textContent = on ? onText : offText;
             el.className = "pill " + (on ? "ok" : "bad");
          }
+
          function modeToText(mode) {
             if (mode === 0) return "IDLE";
             if (mode === 1) return "AUTO";
             if (mode === 2) return "MANUAL";
             return "UNKNOWN";
          }
+
+         function safeIpText(ip) {
+            if (!ip) return "-";
+            if (ip === "0.0.0.0") return "-";
+            return ip;
+         }
+
+         function setNeutralPill(el, text) {
+            const v = safeIpText(text);
+            el.textContent = v;
+            el.className = "pill " + (v === "-" ? "bad" : "ok");
+         }
+
+         async function post(path) {
+            try {
+               await fetch(path, { method: "POST" });
+            } catch (e) {}
+         }
+
+         let gStaConnected = false;
+
          async function refresh() {
-            const r = await fetch("/api/status");
-            const s = await r.text();
+            let s = "";
+            try {
+               const r = await fetch("/api/status", { cache: "no-store" });
+               s = await r.text();
+            } catch (e) {
+               document.getElementById("raw").textContent =
+                  "fetch /api/status failed";
+               return;
+            }
+
             document.getElementById("raw").textContent = s;
 
             let data;
@@ -118,10 +342,12 @@
                return;
             }
 
+            // MODE
             const mode = Number(data.mode);
             document.getElementById("modeId").textContent = String(mode);
             document.getElementById("modeText").textContent = modeToText(mode);
 
+            // ACTUATORS
             setPill(
                document.getElementById("pumpPill"),
                Number(data.pump) === 1,
@@ -141,6 +367,7 @@
                "OFF",
             );
 
+            // LIGHT
             document.getElementById("lux").textContent = data.lux ?? "-";
             setPill(
                document.getElementById("luxValidPill"),
@@ -149,6 +376,7 @@
                "INVALID",
             );
 
+            // TEMP
             document.getElementById("temp").textContent = data.temp ?? "-";
             setPill(
                document.getElementById("tempValidPill"),
@@ -156,7 +384,69 @@
                "VALID",
                "INVALID",
             );
+
+            // NETWORK
+            const apIp = safeIpText(data.apIp);
+            const staIp = safeIpText(data.staIp);
+            const staConnected = Number(data.staConnected) === 1;
+            const netMsg = (data.netMsg || "").trim();
+
+            gStaConnected = staConnected;
+
+            // Toggle button label/state
+            const btn = document.getElementById("btnNetToggle");
+            if (gStaConnected) {
+               btn.textContent = "Back to AP";
+               btn.className = "btn danger";
+            } else {
+               btn.textContent = "Connect STA";
+               btn.className = "btn primary";
+            }
+
+            setNeutralPill(document.getElementById("apIpPill"), apIp);
+            setPill(
+               document.getElementById("staConnPill"),
+               staConnected,
+               "CONNECTED",
+               "DISCONNECTED",
+            );
+            setNeutralPill(document.getElementById("staIpPill"), staIp);
+
+            // TIP (✅ priority: netMsg)
+            const tip = document.getElementById("tip");
+            if (netMsg) {
+               tip.textContent = netMsg;
+            } else if (staConnected && staIp !== "-") {
+               tip.innerHTML =
+                  'STA connected. Move to: <a href="http://' +
+                  staIp +
+                  '/">http://' +
+                  staIp +
+                  "/</a>";
+            } else if (apIp !== "-") {
+               tip.innerHTML =
+                  'Using AP. Open: <a href="http://' +
+                  apIp +
+                  '/">http://' +
+                  apIp +
+                  "/</a><br />" +
+                  'Set WiFi: <a href="/wifi">/wifi</a>';
+            } else {
+               tip.textContent = "No IP yet.";
+            }
          }
+
+         // Buttons
+         document.getElementById("btnWifi").addEventListener("click", () => {
+            window.location.href = "/wifi";
+         });
+
+         document
+            .getElementById("btnNetToggle")
+            .addEventListener("click", () => {
+               post(gStaConnected ? "/api/net/off" : "/api/net/on");
+            });
+
          setInterval(refresh, 1000);
          refresh();
       </script>
