@@ -101,6 +101,21 @@ void inputTask(void *pvParameters)
 			 ctx->tempSensor->getLastHumidity(),
 			 ctx->tempSensor->isHumidityValid(),
 			 now);
+		// เพิ่มหลัง updateHumidity(...)
+		if (ctx->waterTempSensor && ctx->waterTempSensor->count() > 0)
+		{
+			ctx->waterTempSensor->readAll();
+
+			WaterTempReading readings[MAX_WATER_TEMP_SENSORS];
+			for (uint8_t i = 0; i < ctx->waterTempSensor->count(); i++)
+			{
+				const auto &r = ctx->waterTempSensor->get(i);
+				readings[i].tempC = r.tempC;
+				readings[i].isValid = r.isValid;
+				strncpy(readings[i].label, r.label, sizeof(readings[i].label));
+			}
+			ctx->state->updateWaterTemps(readings, ctx->waterTempSensor->count());
+		}
 
 		// --- Manual switches → SharedState overrides ---
 		if (ctx->swManualPump && ctx->swManualMist && ctx->swManualAir)

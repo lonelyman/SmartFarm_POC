@@ -42,6 +42,7 @@ void networkTask(void *pvParameters)
 
    // 1) Boot policy: เปิด AP เป็นค่าเริ่มต้นเสมอ (offline-first)
    ctx->network->startAp();
+   ctx->state->setNetState(NetState::AP_PRIMARY);
    ctx->state->setNetMessage("AP ready. You can use dashboard via AP (192.168.4.1).");
 
    // --- STA connect state machine ---
@@ -88,6 +89,7 @@ void networkTask(void *pvParameters)
             if (!ctx->network->hasValidConfig())
             {
                Serial.println("⚠️ NET_ON requested but no valid config → stay AP");
+               ctx->state->setNetState(NetState::AP_PRIMARY);
                ctx->state->setNetMessage("No WiFi config. Open /wifi to set SSID/password.");
                staState = StaConnState::Idle;
                break;
@@ -97,12 +99,14 @@ void networkTask(void *pvParameters)
             if (ctx->network->pollStaConnected())
             {
                Serial.println("✅ STA already connected (AP kept)");
+               ctx->state->setNetState(NetState::STA_CONNECTED);
                ctx->state->setNetMessage("STA already connected. You can open via LAN too.");
                staState = StaConnState::Connected;
                break;
             }
 
             Serial.println("📡 NET_ON → start STA connect (non-blocking, keep AP)");
+            ctx->state->setNetState(NetState::STA_CONNECTING);
             ctx->state->setNetMessage("Connecting STA...");
 
             ctx->network->startStaConnect();
@@ -113,11 +117,10 @@ void networkTask(void *pvParameters)
 
          case NetCmdType::NetOff:
          {
-            // Cancel immediately even if currently connecting
             Serial.println("📴 NET_OFF → disconnect STA only (keep AP)");
             ctx->network->disconnectStaOnly();
+            ctx->state->setNetState(NetState::STA_STOPPED);
             ctx->state->setNetMessage("STA disconnected. AP mode active.");
-
             staState = StaConnState::Idle;
             break;
          }
@@ -135,12 +138,12 @@ void networkTask(void *pvParameters)
          }
       }
 
-      // --- STA connect progress (non-blocking) ---
       if (staState == StaConnState::Connecting)
       {
          if (ctx->network->pollStaConnected())
          {
             Serial.println("✅ STA connected (AP kept)");
+            ctx->state->setNetState(NetState::STA_CONNECTED);
             ctx->state->setNetMessage("STA connected. You can open via LAN too.");
             staState = StaConnState::Connected;
          }
@@ -150,19 +153,18 @@ void networkTask(void *pvParameters)
             if (now - staStartMs >= NET_CONNECT_TIMEOUT_MS)
             {
                Serial.println("❌ STA connect timeout (stay AP)");
-               ctx->network->disconnectStaOnly(); // ensure STA not half-open
+               ctx->network->disconnectStaOnly();
+               ctx->state->setNetState(NetState::STA_FAILED);
                ctx->state->setNetMessage("STA timeout. Still in AP mode. Check WiFi then retry.");
                staState = StaConnState::Failed;
             }
          }
       }
 
-      // Optional: if STA was connected but later drops, you can reflect it
-      // (leave it passive; do not auto-reconnect unless NetOn is requested)
       if (staState == StaConnState::Connected && !ctx->network->pollStaConnected())
       {
-         // STA dropped unexpectedly; keep AP.
          Serial.println("⚠️ STA dropped (AP kept)");
+         ctx->state->setNetState(NetState::AP_PRIMARY);
          ctx->state->setNetMessage("STA dropped. AP mode active.");
          staState = StaConnState::Idle;
       }

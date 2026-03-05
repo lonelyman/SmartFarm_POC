@@ -10,6 +10,7 @@
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32WaterLevelInput.h"
 #include "drivers/Esp32NetModeSwitch.h"
+#include "drivers/Esp32Ds18b20.h"
 
 #include "application/FarmManager.h"
 
@@ -34,6 +35,7 @@ Esp32Bh1750Light lightSensor("Main-Light");
 Esp32Sht40 tempSensor("Main-Temp");
 
 Esp32WaterLevelInput waterLevelInput(PIN_WATER_LEVEL_CH1_LOW_SENSOR, PIN_WATER_LEVEL_CH2_LOW_SENSOR);
+Esp32Ds18b20 waterTempSensor(PIN_ONE_WIRE, DS18B20_MAX_SENSORS);
 // Relays
 Esp32Relay waterPump(PIN_RELAY_WATER_PUMP, "Water-Pump");
 Esp32Relay mistSystem(PIN_RELAY_MIST, "Mist-System");
@@ -61,10 +63,10 @@ static SystemContext ctx{
     &lightSensor,     // lightSensor
     &tempSensor,      // tempSensor
     &waterLevelInput, // waterLevelInput
-
-    &waterPump,  // waterPump
-    &mistSystem, // mistSystem
-    &airPump,    // airPump
+    &waterTempSensor, // waterTempSensor
+    &waterPump,       // waterPump
+    &mistSystem,      // mistSystem
+    &airPump,         // airPump
 
     &swManualPump, // swManualPump
     &swManualMist, // swManualMist

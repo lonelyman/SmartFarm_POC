@@ -15,6 +15,9 @@ constexpr int PIN_RELAY_WATER_PUMP = 25; // ปั๊มน้ำ
 constexpr int PIN_RELAY_MIST = 26;       // ปั๊มหมอก
 constexpr int PIN_RELAY_AIR_PUMP = 27;   // ปั๊มลม
 
+// ====================== DS18B20 (1-Wire Water Temp) ======================
+constexpr int PIN_ONE_WIRE = 4;            // DATA pin (ผ่าน Adapter Module)
+constexpr uint8_t DS18B20_MAX_SENSORS = 4; // รองรับสูงสุด 4 ตัว
 
 // ====================== WATER LEVEL SENSORS (XKC-Y25) ======================
 constexpr int PIN_WATER_LEVEL_CH1_LOW_SENSOR = 32;

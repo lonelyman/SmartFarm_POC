@@ -76,6 +76,10 @@ namespace
       if (ctx.waterLevelInput)
          ctx.waterLevelInput->begin();
 
+      // เพิ่มต่อจาก sensor begin() อื่นๆ
+      if (ctx.waterTempSensor)
+         ctx.waterTempSensor->begin();
+
       if (ctx.ui)
          ctx.ui->begin();
 
