@@ -84,6 +84,13 @@ namespace
       ctx.mistSystem->begin();
       ctx.airPump->begin();
 
+      if (ctx.swManualPump)
+         ctx.swManualPump->begin();
+      if (ctx.swManualMist)
+         ctx.swManualMist->begin();
+      if (ctx.swManualAir)
+         ctx.swManualAir->begin();
+
       // Water level alarm LEDs
       pinMode(PIN_WATER_LEVEL_CH1_ALARM_LED, OUTPUT);
       pinMode(PIN_WATER_LEVEL_CH2_ALARM_LED, OUTPUT);

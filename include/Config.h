@@ -5,16 +5,16 @@
 constexpr int PIN_I2C_SDA = 21;
 constexpr int PIN_I2C_SCL = 22;
 
+// ====================== MANUAL SWITCH INPUTS ======================
+constexpr int PIN_SW_MANUAL_PUMP = 18; // Active LOW (pull-up)
+constexpr int PIN_SW_MANUAL_MIST = 5;  // Active LOW (pull-up)
+constexpr int PIN_SW_MANUAL_AIR = 15;  // Active LOW (pull-up)
+
 // ====================== RELAY OUTPUTS (ต่อเข้า SSR / โมดูลรีเลย์) =======
 constexpr int PIN_RELAY_WATER_PUMP = 25; // ปั๊มน้ำ
 constexpr int PIN_RELAY_MIST = 26;       // ปั๊มหมอก
 constexpr int PIN_RELAY_AIR_PUMP = 27;   // ปั๊มลม
 
-// เผื่อในอนาคต: ไฟ, พัดลม, ฮีตเตอร์ ฯลฯ
-constexpr int PIN_RELAY_FREE1 = 13;
-constexpr int PIN_RELAY_FREE2 = 16;
-constexpr int PIN_RELAY_FREE3 = 17;
-constexpr int PIN_RELAY_FREE4 = 14;
 
 // ====================== WATER LEVEL SENSORS (XKC-Y25) ======================
 constexpr int PIN_WATER_LEVEL_CH1_LOW_SENSOR = 32;
