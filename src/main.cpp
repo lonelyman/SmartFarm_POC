@@ -38,6 +38,10 @@ Esp32WaterLevelInput waterLevelInput(PIN_WATER_LEVEL_CH1_LOW_SENSOR, PIN_WATER_L
 Esp32Relay waterPump(PIN_RELAY_WATER_PUMP, "Water-Pump");
 Esp32Relay mistSystem(PIN_RELAY_MIST, "Mist-System");
 Esp32Relay airPump(PIN_RELAY_AIR_PUMP, "Air-Pump");
+// Manual switches
+Esp32ManualSwitch swManualPump(PIN_SW_MANUAL_PUMP);
+Esp32ManualSwitch swManualMist(PIN_SW_MANUAL_MIST);
+Esp32ManualSwitch swManualAir(PIN_SW_MANUAL_AIR);
 
 // Time
 RtcDs3231Time rtcTime;
@@ -61,6 +65,10 @@ static SystemContext ctx{
     &waterPump,  // waterPump
     &mistSystem, // mistSystem
     &airPump,    // airPump
+
+    &swManualPump, // swManualPump
+    &swManualMist, // swManualMist
+    &swManualAir,  // swManualAir
 
     &sysClock,   // clock
     &wifiNet,    // network

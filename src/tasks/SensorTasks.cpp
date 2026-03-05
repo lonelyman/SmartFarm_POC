@@ -102,6 +102,30 @@ void inputTask(void *pvParameters)
 			 ctx->tempSensor->isHumidityValid(),
 			 now);
 
+		// --- Manual switches → SharedState overrides ---
+		if (ctx->swManualPump && ctx->swManualMist && ctx->swManualAir)
+		{
+			ManualOverrides sw{};
+			sw.wantPumpOn = ctx->swManualPump->isPressed();
+			sw.wantMistOn = ctx->swManualMist->isPressed();
+			sw.wantAirOn = ctx->swManualAir->isPressed();
+
+			// --- Manual switches → SharedState overrides ---
+			// ทำงานเฉพาะเมื่ออยู่ใน MANUAL mode เท่านั้น
+			if (ctx->swManualPump && ctx->swManualMist && ctx->swManualAir)
+			{
+				SystemStatus snap = ctx->state->getSnapshot();
+				if (snap.mode == SystemMode::MANUAL)
+				{
+					ManualOverrides sw{};
+					sw.wantPumpOn = ctx->swManualPump->isPressed();
+					sw.wantMistOn = ctx->swManualMist->isPressed();
+					sw.wantAirOn = ctx->swManualAir->isPressed();
+					ctx->state->setManualOverrides(sw);
+				}
+			}
+		}
+
 		// Water level sensors
 		if (ctx->waterLevelInput)
 		{

@@ -15,6 +15,7 @@
 #include "drivers/Esp32Sht40.h"
 #include "drivers/Esp32Relay.h"
 #include "drivers/Esp32WaterLevelInput.h"
+#include "drivers/Esp32ManualSwitch.h"
 
 #include "application/FarmManager.h"
 
@@ -36,6 +37,10 @@ struct SystemContext
    Esp32Relay *waterPump;
    Esp32Relay *mistSystem;
    Esp32Relay *airPump;
+
+   Esp32ManualSwitch *swManualPump;
+   Esp32ManualSwitch *swManualMist;
+   Esp32ManualSwitch *swManualAir;
 
    // Clock abstraction
    IClock *clock;
