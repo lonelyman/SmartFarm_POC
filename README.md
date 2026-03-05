@@ -29,25 +29,44 @@
 
 ## 📌 GPIO Pin Map
 
+### หลักการต่อวงจรสวิตช์ (ใช้แบบเดียวกันทุกตัว)
+
+สวิตช์ทุกตัวในระบบนี้ต่อแบบ **Active LOW + Pull-up ภายนอก 10kΩ**
+
+```
+3.3V ──── R10kΩ ──── GPIO (34, 35, 36, 5, 15, 18)
+                          │
+                       สวิตช์ / Toggle
+                          │
+                         GND
+```
+
+| สถานะ       | GPIO                   | code อ่านได้ |
+| ----------- | ---------------------- | ------------ |
+| ไม่กด / OFF | HIGH (pull-up ดึงขึ้น) | LOW = false  |
+| กด / ON     | LOW (ต่อลง GND)        | LOW = true   |
+
+---
+
 ### ใช้งานอยู่
 
-| GPIO    | ประเภท          | ใช้เป็น                                     |
-| ------- | --------------- | ------------------------------------------- |
-| 5       | I/O (strapping) | SW_MANUAL_MIST — Active LOW, pull-up ภายนอก |
-| 15      | I/O (strapping) | SW_MANUAL_AIR — Active LOW, pull-up ภายนอก  |
-| 18      | I/O ✅          | SW_MANUAL_PUMP — Active LOW, pull-up ภายนอก |
-| 19      | I/O ✅          | WATER_LEVEL_CH2_ALARM_LED                   |
-| 21      | I/O ✅          | I2C SDA (BH1750, SHT40, DS3231)             |
-| 22      | I/O ✅          | I2C SCL (BH1750, SHT40, DS3231)             |
-| 23      | I/O ✅          | WATER_LEVEL_CH1_ALARM_LED                   |
-| 25      | I/O ✅          | RELAY_WATER_PUMP                            |
-| 26      | I/O ✅          | RELAY_MIST                                  |
-| 27      | I/O ✅          | RELAY_AIR_PUMP                              |
-| 32      | I/O ✅          | WATER_LEVEL_CH1_SENSOR                      |
-| 33      | I/O ✅          | WATER_LEVEL_CH2_SENSOR                      |
-| 34      | Input only      | SW_MODE_A                                   |
-| 35      | Input only      | SW_MODE_B                                   |
-| 36 (VP) | Input only      | SW_NET — HIGH=STA, LOW=AP                   |
+| GPIO    | ประเภท          | ใช้เป็น                          | หมายเหตุ                                             |
+| ------- | --------------- | -------------------------------- | ---------------------------------------------------- |
+| 5       | I/O (strapping) | SW_MANUAL_MIST                   | Active LOW — กดค้าง = เปิด mist (เฉพาะ MANUAL)       |
+| 15      | I/O (strapping) | SW_MANUAL_AIR                    | Active LOW — กดค้าง = เปิด air pump (เฉพาะ MANUAL)   |
+| 18      | I/O ✅          | SW_MANUAL_PUMP                   | Active LOW — กดค้าง = เปิด water pump (เฉพาะ MANUAL) |
+| 19      | I/O ✅          | WATER_LEVEL_CH2_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH2                      |
+| 21      | I/O ✅          | I2C SDA                          | BH1750, SHT40, DS3231                                |
+| 22      | I/O ✅          | I2C SCL                          | BH1750, SHT40, DS3231                                |
+| 23      | I/O ✅          | WATER_LEVEL_CH1_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH1                      |
+| 25      | I/O ✅          | RELAY_WATER_PUMP                 | Output — HIGH = เปิดรีเลย์                           |
+| 26      | I/O ✅          | RELAY_MIST                       | Output — HIGH = เปิดรีเลย์                           |
+| 27      | I/O ✅          | RELAY_AIR_PUMP                   | Output — HIGH = เปิดรีเลย์                           |
+| 32      | I/O ✅          | WATER_LEVEL_CH1_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                 |
+| 33      | I/O ✅          | WATER_LEVEL_CH2_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                 |
+| 34      | Input only      | SW_MODE_A                        | Active LOW — ร่วมกับ B เลือกโหมด IDLE/AUTO/MANUAL    |
+| 35      | Input only      | SW_MODE_B                        | Active LOW — ร่วมกับ A เลือกโหมด IDLE/AUTO/MANUAL    |
+| 36 (VP) | Input only      | SW_NET                           | Active LOW — กด = STA, ไม่กด = AP (default)          |
 
 ### ว่าง
 
