@@ -143,7 +143,7 @@ void Esp32WebUi::registerRoutes()
       json += "\"staConnected\":" + String(staConnected ? 1 : 0) + ",";
       json += "\"apIp\":\"" + apIp.toString() + "\",";
       json += "\"staIp\":\"" + staIp.toString() + "\",";
-
+      json += "\"netState\":" + String((int)_ctx.state->getNetState()) + ",";
       json += "\"netMsg\":\"" + String(netMsg) + "\"";
       json += "}";
       _server.send(200, "application/json; charset=utf-8", json); });

@@ -34,9 +34,18 @@ struct WaterLevelSensors
     bool ch2Low = false;
 };
 
+struct WaterTempReading
+{
+    float tempC = 0.0f;
+    bool isValid = false;
+    char label[16] = "";
+};
+
 /**
  * @brief สถานะรวมของฟาร์ม (Single Source of Truth)
  */
+
+constexpr uint8_t MAX_WATER_TEMP_SENSORS = 4;
 struct SystemStatus
 {
     SensorReading light;
@@ -44,6 +53,9 @@ struct SystemStatus
     SensorReading temperature;
     SensorReading humidity;
     WaterLevelSensors waterLevelSensors;
+
+    WaterTempReading waterTemp[MAX_WATER_TEMP_SENSORS];
+    uint8_t waterTempCount = 0;
 
     bool isPumpActive = false;    // ปั๊มน้ำ
     bool isMistActive = false;    // หมอก

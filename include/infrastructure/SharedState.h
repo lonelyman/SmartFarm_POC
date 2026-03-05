@@ -169,6 +169,19 @@ public:
     void setNetMessage(const char *msg);
     void getNetMessage(char *out, size_t outLen);
 
+    // 🌡 อัปเดตอุณหภูมิน้ำ (DS18B20)
+    void updateWaterTemps(const WaterTempReading *readings, uint8_t count)
+    {
+        if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+        {
+            uint8_t n = count < MAX_WATER_TEMP_SENSORS ? count : MAX_WATER_TEMP_SENSORS;
+            for (uint8_t i = 0; i < n; i++)
+                _status.waterTemp[i] = readings[i];
+            _status.waterTempCount = n;
+            xSemaphoreGive(_mutex);
+        }
+    }
+
 private:
     SystemStatus _status;
     SemaphoreHandle_t _mutex;

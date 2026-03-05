@@ -434,7 +434,8 @@
             const apIp = safeIpText(data.apIp);
             const staIp = safeIpText(data.staIp);
             const staConnected = Number(data.staConnected) === 1;
-            const netMsg = (data.netMsg || "").trim();
+            // netState: 0=AP_PRIMARY, 1=STA_CONNECTING, 2=STA_CONNECTED, 3=STA_FAILED, 4=STA_STOPPED
+            const netState = Number(data.netState ?? 0);
 
             gStaConnected = staConnected;
 
@@ -457,18 +458,30 @@
             );
             setNeutralPill(document.getElementById("staIpPill"), staIp);
 
-            // TIP (✅ priority: netMsg)
+            // TIP — อิง netState เป็นหลัก (ไม่ค้างข้อความเก่า)
             const tip = document.getElementById("tip");
-            if (netMsg) {
-               tip.textContent = netMsg;
-            } else if (staConnected && staIp !== "-") {
+            if (netState === 1) {
+               tip.textContent = "⏳ Connecting to WiFi...";
+            } else if (netState === 2 && staIp !== "-") {
                tip.innerHTML =
-                  'STA connected. Move to: <a href="http://' +
+                  'STA connected. Open: <a href="http://' +
                   staIp +
                   '/">http://' +
                   staIp +
                   "/</a>";
-            } else if (apIp !== "-") {
+            } else if (netState === 3) {
+               tip.textContent =
+                  "❌ WiFi connect failed. Check SSID/password then retry.";
+            } else if (netState === 4) {
+               tip.innerHTML =
+                  "STA disconnected. AP only.<br />" +
+                  'Open: <a href="http://' +
+                  apIp +
+                  '/">http://' +
+                  apIp +
+                  "/</a>";
+            } else {
+               // 0 = AP_PRIMARY (boot default)
                tip.innerHTML =
                   'Using AP. Open: <a href="http://' +
                   apIp +
@@ -476,8 +489,6 @@
                   apIp +
                   "/</a><br />" +
                   'Set WiFi: <a href="/wifi">/wifi</a>';
-            } else {
-               tip.textContent = "No IP yet.";
             }
          }
 

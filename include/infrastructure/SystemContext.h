@@ -16,6 +16,7 @@
 #include "drivers/Esp32Relay.h"
 #include "drivers/Esp32WaterLevelInput.h"
 #include "drivers/Esp32ManualSwitch.h"
+#include "drivers/Esp32Ds18b20.h"
 
 #include "application/FarmManager.h"
 
@@ -32,6 +33,8 @@ struct SystemContext
    Esp32Sht40 *tempSensor;
    // Water level sensors (XKC-Y25)
    Esp32WaterLevelInput *waterLevelInput;
+
+   Esp32Ds18b20 *waterTempSensor;
 
    // Actuators
    Esp32Relay *waterPump;
