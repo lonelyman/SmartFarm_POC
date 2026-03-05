@@ -48,35 +48,41 @@
 
 ---
 
-### ใช้งานอยู่
+### ตาราง GPIO ทั้งหมด
 
-| GPIO    | ประเภท          | ใช้เป็น                          | หมายเหตุ                                             |
-| ------- | --------------- | -------------------------------- | ---------------------------------------------------- |
-| 5       | I/O (strapping) | SW_MANUAL_MIST                   | Active LOW — กดค้าง = เปิด mist (เฉพาะ MANUAL)       |
-| 15      | I/O (strapping) | SW_MANUAL_AIR                    | Active LOW — กดค้าง = เปิด air pump (เฉพาะ MANUAL)   |
-| 18      | I/O ✅          | SW_MANUAL_PUMP                   | Active LOW — กดค้าง = เปิด water pump (เฉพาะ MANUAL) |
-| 19      | I/O ✅          | WATER_LEVEL_CH2_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH2                      |
-| 21      | I/O ✅          | I2C SDA                          | BH1750, SHT40, DS3231                                |
-| 22      | I/O ✅          | I2C SCL                          | BH1750, SHT40, DS3231                                |
-| 23      | I/O ✅          | WATER_LEVEL_CH1_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH1                      |
-| 25      | I/O ✅          | RELAY_WATER_PUMP                 | Output — HIGH = เปิดรีเลย์                           |
-| 26      | I/O ✅          | RELAY_MIST                       | Output — HIGH = เปิดรีเลย์                           |
-| 27      | I/O ✅          | RELAY_AIR_PUMP                   | Output — HIGH = เปิดรีเลย์                           |
-| 32      | I/O ✅          | WATER_LEVEL_CH1_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                 |
-| 33      | I/O ✅          | WATER_LEVEL_CH2_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                 |
-| 34      | Input only      | SW_MODE_A                        | Active LOW — ร่วมกับ B เลือกโหมด IDLE/AUTO/MANUAL    |
-| 35      | Input only      | SW_MODE_B                        | Active LOW — ร่วมกับ A เลือกโหมด IDLE/AUTO/MANUAL    |
-| 36 (VP) | Input only      | SW_NET                           | Active LOW — กด = STA, ไม่กด = AP (default)          |
-
-### ว่าง
-
-| GPIO    | ประเภท     | หมายเหตุ                            |
-| ------- | ---------- | ----------------------------------- |
-| 39 (VN) | Input only | PIN_SW_FREE — ไม่มี internal pullup |
-| 13      | I/O ✅     | RELAY_FREE1 (จองไว้เผื่อ)           |
-| 14      | I/O ✅     | RELAY_FREE4 (จองไว้เผื่อ)           |
-| 16      | I/O ✅     | RELAY_FREE2 (จองไว้เผื่อ)           |
-| 17      | I/O ✅     | RELAY_FREE3 (จองไว้เผื่อ)           |
+| GPIO    | ประเภท          | สถานะ         | ใช้เป็น                          | หมายเหตุ                                                             |
+| ------- | --------------- | ------------- | -------------------------------- | -------------------------------------------------------------------- |
+| 0       | I/O             | ⚠️ หลีกเลี่ยง | —                                | Strapping, ต่อกับปุ่ม BOOT บนบอร์ด                                   |
+| 1       | I/O             | ⚠️ หลีกเลี่ยง | —                                | TX0 (Serial debug)                                                   |
+| 2       | I/O             | ⚠️ หลีกเลี่ยง | —                                | Strapping, ต่อกับ LED บนบอร์ด                                        |
+| 3       | I/O             | ⚠️ หลีกเลี่ยง | —                                | RX0 (Serial debug)                                                   |
+| 4       | I/O ✅          | ✅ ว่าง       | —                                | —                                                                    |
+| 5       | I/O (strapping) | ✅ ใช้แล้ว    | SW_MANUAL_MIST                   | Active LOW + R10kΩ pull-up — กดค้าง = เปิด mist (เฉพาะ MANUAL)       |
+| 6–11    | —               | 🚫 ห้ามใช้    | —                                | SPI Flash ภายใน — แตะแล้วบอร์ดพัง                                    |
+| 12      | I/O (strapping) | 🚫 ห้ามใช้    | —                                | HIGH ตอน boot = flash voltage ผิด บอร์ดพังถาวร                       |
+| 13      | I/O ✅          | ✅ ว่าง       | RELAY_FREE1 (จองไว้)             | พร้อมใช้ทันที                                                        |
+| 14      | I/O ✅          | ✅ ว่าง       | RELAY_FREE4 (จองไว้)             | พร้อมใช้ทันที                                                        |
+| 15      | I/O (strapping) | ✅ ใช้แล้ว    | SW_MANUAL_AIR                    | Active LOW + R10kΩ pull-up — กดค้าง = เปิด air pump (เฉพาะ MANUAL)   |
+| 16      | I/O ✅          | ✅ ว่าง       | RELAY_FREE2 (จองไว้)             | พร้อมใช้ทันที                                                        |
+| 17      | I/O ✅          | ✅ ว่าง       | RELAY_FREE3 (จองไว้)             | พร้อมใช้ทันที                                                        |
+| 18      | I/O ✅          | ✅ ใช้แล้ว    | SW_MANUAL_PUMP                   | Active LOW + R10kΩ pull-up — กดค้าง = เปิด water pump (เฉพาะ MANUAL) |
+| 19      | I/O ✅          | ✅ ใช้แล้ว    | WATER_LEVEL_CH2_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH2                                      |
+| 20      | —               | 🚫 ไม่มี      | —                                | ESP32 ไม่มี GPIO20                                                   |
+| 21      | I/O ✅          | ✅ ใช้แล้ว    | I2C SDA                          | BH1750, SHT40, DS3231                                                |
+| 22      | I/O ✅          | ✅ ใช้แล้ว    | I2C SCL                          | BH1750, SHT40, DS3231                                                |
+| 23      | I/O ✅          | ✅ ใช้แล้ว    | WATER_LEVEL_CH1_ALARM_LED        | Output — กระพริบเมื่อน้ำต่ำ CH1                                      |
+| 24      | —               | 🚫 ไม่มี      | —                                | ESP32 ไม่มี GPIO24                                                   |
+| 25      | I/O ✅          | ✅ ใช้แล้ว    | RELAY_WATER_PUMP                 | Output — HIGH = เปิดรีเลย์                                           |
+| 26      | I/O ✅          | ✅ ใช้แล้ว    | RELAY_MIST                       | Output — HIGH = เปิดรีเลย์                                           |
+| 27      | I/O ✅          | ✅ ใช้แล้ว    | RELAY_AIR_PUMP                   | Output — HIGH = เปิดรีเลย์                                           |
+| 28–31   | —               | 🚫 ไม่มี      | —                                | ESP32 ไม่มี GPIO28–31                                                |
+| 32      | I/O ✅          | ✅ ใช้แล้ว    | WATER_LEVEL_CH1_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                                 |
+| 33      | I/O ✅          | ✅ ใช้แล้ว    | WATER_LEVEL_CH2_SENSOR (XKC-Y25) | Input — LOW = น้ำต่ำ                                                 |
+| 34      | Input only      | ✅ ใช้แล้ว    | SW_MODE_A                        | Active LOW + R10kΩ pull-up — ร่วมกับ B เลือกโหมด                     |
+| 35      | Input only      | ✅ ใช้แล้ว    | SW_MODE_B                        | Active LOW + R10kΩ pull-up — ร่วมกับ A เลือกโหมด                     |
+| 36 (VP) | Input only      | ✅ ใช้แล้ว    | SW_NET                           | Active LOW + R10kΩ pull-up — กด = STA, ไม่กด = AP                    |
+| 37–38   | —               | 🚫 ไม่มี      | —                                | ESP32 ไม่มี GPIO37–38                                                |
+| 39 (VN) | Input only      | ✅ ว่าง       | PIN_SW_FREE                      | ไม่มี internal pullup — ต้องต่อ R ภายนอกเสมอ                         |
 
 ### ห้ามใช้
 
