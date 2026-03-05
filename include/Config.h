@@ -29,8 +29,9 @@ constexpr int PIN_SW_MODE_A = 34;
 constexpr int PIN_SW_MODE_B = 35;
 
 // ====================== NETWORK SWITCH (AP/STA) ======================
-constexpr int PIN_SW_NET_AP = 36;  // GPIO36 (VP) input-only
-constexpr int PIN_SW_NET_STA = 39; // GPIO39 (VN) input-only
+constexpr int PIN_SW_NET = 36; // GPIO36 (VP) — HIGH=STA, LOW=AP
+
+constexpr int PIN_SW_FREE = 39; // GPIO39 (VN) input-only
 
 // ====================== ปรับเวลา debounce ปุ่ม (ms) ======================
 constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;

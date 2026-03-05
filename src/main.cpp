@@ -26,7 +26,7 @@
 SharedState state;
 
 AirPumpSchedule airSchedule;
-Esp32NetModeSwitch gNetSwitch(PIN_SW_NET_AP, PIN_SW_NET_STA);
+Esp32NetModeSwitch gNetSwitch(PIN_SW_NET);
 Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
 Esp32WiFiNetwork wifiNet;
 // Sensors

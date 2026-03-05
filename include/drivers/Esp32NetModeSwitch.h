@@ -6,15 +6,14 @@
 class Esp32NetModeSwitch : public INetModeSource
 {
 public:
-   Esp32NetModeSwitch(int pinAp, int pinSta, uint32_t debounceMs = 50)
-       : _pinAp(pinAp), _pinSta(pinSta), _debounceMs(debounceMs) {}
+   Esp32NetModeSwitch(int pin, uint32_t debounceMs = 50)
+       : _pin(pin), _debounceMs(debounceMs) {}
 
    void begin() override;
    NetDesiredMode read() override;
 
 private:
-   int _pinAp;
-   int _pinSta;
+   int _pin;
    uint32_t _debounceMs;
 
    NetDesiredMode _stable = NetDesiredMode::AP_PRIMARY;
