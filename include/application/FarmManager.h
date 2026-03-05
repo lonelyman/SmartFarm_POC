@@ -4,11 +4,6 @@
 #include "../domain/AirPumpSchedule.h"
 #include "FarmModels.h"
 
-/**
- * สมองกลกลาง (pure application logic)
- * - ไม่แตะ Arduino/FreeRTOS/Relay/SharedState
- * - รับ FarmInput และคืน FarmDecision
- */
 class FarmManager
 {
 public:
@@ -19,16 +14,27 @@ public:
 private:
     const AirPumpSchedule *_schedule = nullptr;
 
-    // hysteresis latch (internal memory)
+    // hysteresis latch
     bool _pumpLatched = false;
     bool _mistLatched = false;
     bool _airLatched = false;
 
-private:
+    // boot guard
+    bool _bootGuardDone = false;
+    uint32_t _bootTime = 0;
+
+    // mist time guard
+    uint32_t _mistOnSince = 0;
+    uint32_t _mistOffSince = 0;
+    bool _mistForced = false;
+
     FarmDecision applyManual(const ManualOverrides &m);
     FarmDecision applyAuto(const FarmInput &in);
 
     bool decideMistByTemp(float tempC, bool valid);
+    bool decideMistByHumidity(float humRH, bool valid);
+    bool decideMistByTempAndHumidity(float tempC, float humRH);
+    bool applyMistGuard(bool sensorWantsOn);
     bool decideAirBySchedule(uint16_t minutesOfDay) const;
 };
 

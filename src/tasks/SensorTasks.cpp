@@ -136,6 +136,11 @@ void inputTask(void *pvParameters)
 		// Push to SharedState
 		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
 		ctx->state->updateTemperature(t.value, t.isValid, now);
+
+		ctx->state->updateHumidity(
+			 ctx->tempSensor->getLastHumidity(),
+			 ctx->tempSensor->isHumidityValid(),
+			 now);
 		// Water level sensors
 		if (ctx->waterLevelInput)
 		{
@@ -233,6 +238,9 @@ void controlTask(void *pvParameters)
 		// ใช้เฉพาะข้อมูลที่ logic ต้องใช้ (ลด coupling)
 		in.temperatureC = status.temperature.value;
 		in.temperatureValid = status.temperature.isValid;
+
+		in.humidityRH = status.humidity.value;
+		in.humidityValid = status.humidity.isValid;
 
 		// 5) Decide (Application logic, pure)
 		FarmDecision decision = ctx->manager->update(in);

@@ -14,6 +14,8 @@ struct FarmInput
    // อุณหภูมิ (เฉพาะค่าที่ logic ต้องใช้)
    float temperatureC = 0.0f;
    bool temperatureValid = false;
+   float humidityRH = 0.0f;
+   bool humidityValid = false;
 
    // manual overrides (มาจาก SharedState แต่ FarmManager ไม่รู้จัก SharedState)
    ManualOverrides manual{};

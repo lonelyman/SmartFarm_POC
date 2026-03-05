@@ -12,7 +12,7 @@
 #include "domain/AirPumpSchedule.h"
 
 #include "drivers/Esp32Bh1750Light.h"
-#include "drivers/Esp32FakeTemperature.h"
+#include "drivers/Esp32Sht40.h"
 #include "drivers/Esp32Relay.h"
 #include "drivers/Esp32WaterLevelInput.h"
 
@@ -28,7 +28,7 @@ struct SystemContext
 
    // Sensors
    Esp32Bh1750Light *lightSensor;
-   Esp32FakeTemperature *tempSensor;
+   Esp32Sht40 *tempSensor;
    // Water level sensors (XKC-Y25)
    Esp32WaterLevelInput *waterLevelInput;
 
