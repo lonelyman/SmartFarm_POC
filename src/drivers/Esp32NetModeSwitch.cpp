@@ -11,8 +11,8 @@ void Esp32NetModeSwitch::begin()
 
 NetDesiredMode Esp32NetModeSwitch::readRaw() const
 {
-   // HIGH → STA, LOW → AP (default ปลอดภัย)
-   return (digitalRead(_pin) == HIGH)
+   // (active LOW) กด = LOW = STA_PREFERRED, ไม่กด = HIGH = AP_PRIMARY
+   return (digitalRead(_pin) == LOW)
               ? NetDesiredMode::STA_PREFERRED
               : NetDesiredMode::AP_PRIMARY;
 }
