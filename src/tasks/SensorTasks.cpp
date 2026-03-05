@@ -14,45 +14,6 @@
 
 // ---------- Helpers ----------
 
-static void handleStaSwitchToNetCommand(SharedState *state, bool staSwitch)
-{
-	static bool stable = false;
-	static bool lastRead = false;
-	static uint32_t lastChangeMs = 0;
-	static bool inited = false;
-
-	if (!state)
-		return;
-
-	uint32_t now = millis();
-	if (!inited)
-	{
-		stable = lastRead = staSwitch;
-		lastChangeMs = now;
-		inited = true;
-		return;
-	}
-
-	if (staSwitch != lastRead)
-	{
-		lastRead = staSwitch;
-		lastChangeMs = now;
-		return;
-	}
-
-	if ((now - lastChangeMs) < NET_SWITCH_DEBOUNCE_MS)
-		return; // debounce
-
-	if (stable == lastRead)
-		return;
-
-	stable = lastRead;
-	if (stable)
-		state->requestNetOn();
-	else
-		state->requestNetOff();
-}
-
 static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
 {
 	uint16_t hh = minutesOfDay / 60;
@@ -93,7 +54,7 @@ static void updateWaterLevelAlarmLeds(const WaterLevelSensors &wl)
 	static bool ledPhase = false;
 
 	const uint32_t now = millis();
-	if (now - lastToggleMs >= 500) // กระพริบ 2Hz (500ms toggle)
+	if (now - lastToggleMs >= 500)
 	{
 		lastToggleMs = now;
 		ledPhase = !ledPhase;
@@ -136,11 +97,11 @@ void inputTask(void *pvParameters)
 		// Push to SharedState
 		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
 		ctx->state->updateTemperature(t.value, t.isValid, now);
-
 		ctx->state->updateHumidity(
 			 ctx->tempSensor->getLastHumidity(),
 			 ctx->tempSensor->isHumidityValid(),
 			 now);
+
 		// Water level sensors
 		if (ctx->waterLevelInput)
 		{
@@ -156,12 +117,11 @@ void inputTask(void *pvParameters)
 		Serial.printf("[InputTask] BH1750 lux=%.1f valid=%d\n", lux.value, lux.isValid ? 1 : 0);
 #endif
 #if DEBUG_TEMP_LOG
-		Serial.printf("[InputTask] Temp=%.2f valid=%d\n", t.value, t.isValid ? 1 : 0);
+		Serial.printf("[InputTask] Temp=%.2f Hum=%.1f valid=%d\n",
+						  t.value,
+						  ctx->tempSensor->getLastHumidity(),
+						  t.isValid ? 1 : 0);
 #endif
-
-		// --- Network switch -> NetCommand ---
-		bool staSwitch = (digitalRead(PIN_SW_NET_AP) == HIGH);
-		handleStaSwitchToNetCommand(ctx->state, staSwitch);
 
 		vTaskDelay(pdMS_TO_TICKS(INPUT_TASK_INTERVAL_MS));
 	}
@@ -180,25 +140,21 @@ void controlTask(void *pvParameters)
 
 	while (true)
 	{
-		// 0) Apply pending time-set request (CommandTask -> SharedState -> ControlTask -> IClock)
+		// 0) Apply pending time-set request
 		if (ctx->clock)
 		{
 			TimeSetRequest req{};
 			if (ctx->state->consumeSetClockTime(req))
 			{
 				if (ctx->clock->setTimeOfDay(req.hour, req.minute, req.second))
-				{
 					Serial.printf("[CLOCK] time set applied: %02u:%02u:%02u\n",
 									  req.hour, req.minute, req.second);
-				}
 				else
-				{
-					Serial.println("[CLOCK] failed to apply time set (clock unsupported?)");
-				}
+					Serial.println("[CLOCK] failed to apply time set");
 			}
 		}
 
-		// 1) Read time (IClock)
+		// 1) Read time
 		uint16_t minutesOfDay = 0;
 		if (!ctx->clock || !ctx->clock->getMinutesOfDay(minutesOfDay))
 		{
@@ -217,35 +173,31 @@ void controlTask(void *pvParameters)
 
 		updateWaterLevelAlarmLeds(status.waterLevelSensors);
 
-		// 3) Update mode from source (adapter) -> sync to SharedState (inside function)
+		// 3) Update mode from source
 		updateModeFromSource(*ctx, status);
 
 #if DEBUG_CONTROL_LOG
-		Serial.printf(
-			 "[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
-			 (int)status.mode,
-			 ctx->waterPump->isOn() ? 1 : 0,
-			 ctx->mistSystem->isOn() ? 1 : 0,
-			 ctx->airPump->isOn() ? 1 : 0);
+		Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
+						  (int)status.mode,
+						  ctx->waterPump->isOn() ? 1 : 0,
+						  ctx->mistSystem->isOn() ? 1 : 0,
+						  ctx->airPump->isOn() ? 1 : 0);
 #endif
 
-		// 4) Map to FarmInput (pure application model)
+		// 4) Map to FarmInput
 		FarmInput in{};
 		in.mode = status.mode;
 		in.minutesOfDay = minutesOfDay;
 		in.manual = manual;
-
-		// ใช้เฉพาะข้อมูลที่ logic ต้องใช้ (ลด coupling)
 		in.temperatureC = status.temperature.value;
 		in.temperatureValid = status.temperature.isValid;
-
 		in.humidityRH = status.humidity.value;
 		in.humidityValid = status.humidity.isValid;
 
-		// 5) Decide (Application logic, pure)
+		// 5) Decide
 		FarmDecision decision = ctx->manager->update(in);
 
-		// 6) Apply to hardware (ONLY place touching relays in control path)
+		// 6) Apply to hardware
 		if (decision.pumpOn)
 			ctx->waterPump->turnOn();
 		else
@@ -261,7 +213,7 @@ void controlTask(void *pvParameters)
 		else
 			ctx->airPump->turnOff();
 
-		// 7) Sync actuator states back to SharedState
+		// 7) Sync back to SharedState
 		ctx->state->updateActuators(
 			 ctx->waterPump->isOn(),
 			 ctx->mistSystem->isOn(),
