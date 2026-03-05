@@ -66,6 +66,9 @@ constexpr unsigned long BUTTON_DEBOUNCE_MS = 50;
 constexpr float HYSTERESIS_TEMP_ON = 32.0f;
 constexpr float HYSTERESIS_TEMP_OFF = 29.0f;
 
+constexpr float HYSTERESIS_HUMIDITY_ON = 65.0f;  // %RH — เปิดพ่นเมื่อต่ำกว่านี้
+constexpr float HYSTERESIS_HUMIDITY_OFF = 75.0f; // %RH — ปิดพ่นเมื่อสูงกว่านี้
+
 // ====================== NETWORK SWITCH DEBOUNCE ======================
 constexpr unsigned long NET_SWITCH_DEBOUNCE_MS = 80;
 
@@ -90,5 +93,12 @@ constexpr uint32_t INPUT_TASK_STACK = 4096;
 constexpr uint32_t CONTROL_TASK_STACK = 4096;
 constexpr uint32_t COMMAND_TASK_STACK = 4096;
 constexpr uint32_t LOOP_IDLE_MS = 1000;
+
+// ====================== MIST TIME GUARD ======================
+constexpr uint32_t MIST_MAX_ON_MS = 3 * 60 * 1000UL;  // พ่นได้สูงสุด 3 นาที
+constexpr uint32_t MIST_MIN_OFF_MS = 5 * 60 * 1000UL; // พักอย่างน้อย 5 นาที
+
+// ====================== BOOT GUARD ======================
+constexpr uint32_t BOOT_GUARD_MS = 10000UL; // หน่วง 10 วินาทีหลัง boot
 
 #endif

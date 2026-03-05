@@ -5,7 +5,7 @@
 #include "domain/AirPumpSchedule.h"
 
 #include "drivers/Esp32Bh1750Light.h"
-#include "drivers/Esp32FakeTemperature.h"
+#include "drivers/Esp32Sht40.h"
 #include "drivers/Esp32Relay.h"
 #include "drivers/RtcDs3231Time.h"
 #include "drivers/Esp32WaterLevelInput.h"
@@ -31,7 +31,7 @@ Esp32ModeSwitchSource modeSource(PIN_SW_MODE_A, PIN_SW_MODE_B);
 Esp32WiFiNetwork wifiNet;
 // Sensors
 Esp32Bh1750Light lightSensor("Main-Light");
-Esp32FakeTemperature tempSensor("Main-Temp", 30.0f);
+Esp32Sht40 tempSensor("Main-Temp");
 
 Esp32WaterLevelInput waterLevelInput(PIN_WATER_LEVEL_CH1_LOW_SENSOR, PIN_WATER_LEVEL_CH2_LOW_SENSOR);
 // Relays

@@ -42,6 +42,7 @@ struct SystemStatus
     SensorReading light;
     SensorReading ec;
     SensorReading temperature;
+    SensorReading humidity;
     WaterLevelSensors waterLevelSensors;
 
     bool isPumpActive = false;    // ปั๊มน้ำ

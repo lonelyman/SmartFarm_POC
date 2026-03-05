@@ -282,6 +282,19 @@
             </div>
          </div>
 
+         <div class="card">
+            <div class="title">HUMIDITY (SHT40)</div>
+            <div class="value"><span id="hum">-</span> %RH</div>
+            <div class="row" style="margin-top: 10px">
+               <div class="label">Status</div>
+               <div class="pill" id="humValidPill">-</div>
+            </div>
+            <div class="row">
+               <div class="label">Auto mist</div>
+               <div class="pill" id="humMistHint">-</div>
+            </div>
+         </div>
+
          <!-- RAW JSON -->
          <div class="card" style="grid-column: 1/-1">
             <div class="title">RAW JSON</div>
@@ -384,6 +397,38 @@
                "VALID",
                "INVALID",
             );
+
+            // HUMIDITY
+            const humVal = data.hum ?? null;
+            const humValid = Number(data.humValid) === 1;
+            document.getElementById("hum").textContent =
+               humVal !== null ? Number(humVal).toFixed(1) : "-";
+            setPill(
+               document.getElementById("humValidPill"),
+               humValid,
+               "VALID",
+               "INVALID",
+            );
+
+            const humMistHint = document.getElementById("humMistHint");
+            if (humValid && humVal !== null) {
+               const h = Number(humVal);
+               if (h <= 65) {
+                  humMistHint.textContent = "LOW → MIST ON";
+                  humMistHint.className = "pill bad";
+               } else if (h >= 75) {
+                  humMistHint.textContent = "OK → MIST OFF";
+                  humMistHint.className = "pill ok";
+               } else {
+                  humMistHint.textContent = "HOLD";
+                  humMistHint.className = "pill";
+                  humMistHint.style.background = "#1e3a5f";
+                  humMistHint.style.color = "#93c5fd";
+               }
+            } else {
+               humMistHint.textContent = "-";
+               humMistHint.className = "pill bad";
+            }
 
             // NETWORK
             const apIp = safeIpText(data.apIp);

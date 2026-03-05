@@ -137,7 +137,8 @@ void Esp32WebUi::registerRoutes()
       json += "\"luxValid\":" + String(snap.light.isValid ? 1 : 0) + ",";
       json += "\"temp\":" + String(snap.temperature.value, 2) + ",";
       json += "\"tempValid\":" + String(snap.temperature.isValid ? 1 : 0) + ",";
-
+      json += "\"hum\":"      + String(snap.humidity.value, 1) + ",";
+      json += "\"humValid\":" + String(snap.humidity.isValid ? 1 : 0) + ",";
       json += "\"wifiMode\":" + String((int)mode) + ",";
       json += "\"staConnected\":" + String(staConnected ? 1 : 0) + ",";
       json += "\"apIp\":\"" + apIp.toString() + "\",";

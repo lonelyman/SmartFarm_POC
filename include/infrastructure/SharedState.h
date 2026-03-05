@@ -120,6 +120,15 @@ public:
         }
     }
 
+    void updateHumidity(float hum, bool humValid, uint32_t ts)
+    {
+        if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
+        {
+            _status.humidity = SensorReading(hum, humValid, ts);
+            xSemaphoreGive(_mutex);
+        }
+    }
+
     void updateActuators(bool pump, bool mist, bool air)
     {
         if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(100)))
