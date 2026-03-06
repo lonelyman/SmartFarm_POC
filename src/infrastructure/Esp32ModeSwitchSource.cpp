@@ -1,21 +1,28 @@
 #include "infrastructure/Esp32ModeSwitchSource.h"
+#include "Config.h"
 
-Esp32ModeSwitchSource::Esp32ModeSwitchSource(int pinA, int pinB)
-    : _pinA(pinA), _pinB(pinB) {}
+Esp32ModeSwitchSource::Esp32ModeSwitchSource(int pinA, int pinB, uint32_t debounceMs)
+    : _pinA(pinA), _pinB(pinB), _debounceMs(debounceMs) {}
 
 void Esp32ModeSwitchSource::begin()
 {
-   // default: Active LOW + INPUT_PULLUP (ตาม Config.h)
+   // ใช้ INPUT_PULLUP ร่วมกับ external R10kΩ ที่ค่อมอยู่
    pinMode(_pinA, INPUT_PULLUP);
    pinMode(_pinB, INPUT_PULLUP);
+
+   // อ่านค่าเริ่มต้นทันทีเพื่อไม่ให้ debounce หน่วงตอน boot
+   _stable = readRaw();
+   _lastRaw = _stable;
+   _lastChangeMs = millis();
+}
+
+SystemMode Esp32ModeSwitchSource::readRaw() const
+{
+   return decode(digitalRead(_pinA), digitalRead(_pinB));
 }
 
 SystemMode Esp32ModeSwitchSource::decode(int a, int b) const
 {
-   // ยึด mapping ที่คุณเขียนไว้ใน README:
-   // A=HIGH,B=HIGH -> IDLE
-   // A=LOW,B=HIGH  -> AUTO
-   // A=HIGH,B=LOW  -> MANUAL
    if (a == HIGH && b == HIGH)
       return SystemMode::IDLE;
    if (a == LOW && b == HIGH)
@@ -23,13 +30,23 @@ SystemMode Esp32ModeSwitchSource::decode(int a, int b) const
    if (a == HIGH && b == LOW)
       return SystemMode::MANUAL;
 
-   // กรณีผิดปกติ (LOW,LOW) ให้ปลอดภัยสุดเป็น IDLE
+   // LOW,LOW — ผิดปกติ (สวิตช์เสีย / noise) → fallback ปลอดภัยสุด
    return SystemMode::IDLE;
 }
 
 SystemMode Esp32ModeSwitchSource::readMode()
 {
-   int a = digitalRead(_pinA);
-   int b = digitalRead(_pinB);
-   return decode(a, b);
+   const SystemMode raw = readRaw();
+   const uint32_t now = millis();
+
+   if (raw != _lastRaw)
+   {
+      _lastRaw = raw;
+      _lastChangeMs = now;
+   }
+
+   if ((now - _lastChangeMs) >= _debounceMs)
+      _stable = _lastRaw;
+
+   return _stable;
 }

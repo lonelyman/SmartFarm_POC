@@ -10,6 +10,7 @@
 
 #include "tasks/TaskEntrypoints.h"
 #include "tasks/WebUiTask.h"
+
 namespace
 {
    void printBanner()
@@ -18,27 +19,29 @@ namespace
       Serial.println("===== SmartFarm Booting... =====");
    }
 
-   
+   // ⚠️ boot glitch mitigation (ESP32-S3)
+   // ต้องทำก่อน initDrivers() และก่อนสร้าง FreeRTOS task เสมอ
+   // เพราะ active-low relay: ขา floating ตอนบูต = LOW = relay ON ชั่วคราวได้
    void initRelayPins()
    {
-      // boot glitch mitigation: set relay pins to inactive as early as possible
-      const uint8_t inactive = RELAY_ACTIVE_LOW ? HIGH : LOW; // active-low: inactive=HIGH
+      const uint8_t inactive = RELAY_ACTIVE_LOW ? HIGH : LOW;
       pinMode(PIN_RELAY_WATER_PUMP, OUTPUT);
-      pinMode(PIN_RELAY_MIST, OUTPUT);
-      pinMode(PIN_RELAY_AIR_PUMP, OUTPUT);
+      pinMode(PIN_RELAY_MIST,       OUTPUT);
+      pinMode(PIN_RELAY_AIR_PUMP,   OUTPUT);
       digitalWrite(PIN_RELAY_WATER_PUMP, inactive);
-      digitalWrite(PIN_RELAY_MIST, inactive);
-      digitalWrite(PIN_RELAY_AIR_PUMP, inactive);
+      digitalWrite(PIN_RELAY_MIST,       inactive);
+      digitalWrite(PIN_RELAY_AIR_PUMP,   inactive);
    }
 
    void initI2C()
    {
+      // ESP32-S3: SDA=8, SCL=9 (S3 Arduino default)
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
    }
 
    void initFileSystemAndSchedule(AirPumpSchedule &airSchedule)
    {
-      if (!LittleFS.begin())
+      if (!LittleFS.begin(true)) // true = format on fail (ช่วย first boot)
       {
          Serial.println("⚠️ LittleFS mount failed, air schedule disabled");
          airSchedule.enabled = false;
@@ -89,14 +92,13 @@ namespace
       if (ctx.waterLevelInput)
          ctx.waterLevelInput->begin();
 
-      // เพิ่มต่อจาก sensor begin() อื่นๆ
       if (ctx.waterTempSensor)
          ctx.waterTempSensor->begin();
 
       if (ctx.ui)
          ctx.ui->begin();
 
-      // Actuators
+      // Actuators (relay begin() อ่าน flag RELAY_ACTIVE_LOW จาก Config.h)
       ctx.waterPump->begin();
       ctx.mistSystem->begin();
       ctx.airPump->begin();
@@ -114,7 +116,7 @@ namespace
       pinMode(PIN_WATER_LEVEL_CH2_ALARM_LED, OUTPUT);
       digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LED_OFF);
       digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LED_OFF);
-}
+   }
 
    static void initNetwork(SystemContext &ctx)
    {
@@ -147,17 +149,22 @@ namespace
 
    void startTasks(SystemContext &ctx)
    {
-      xTaskCreatePinnedToCore(inputTask, "In", INPUT_TASK_STACK, &ctx, 1, nullptr, 1);
-      xTaskCreatePinnedToCore(controlTask, "Ctrl", CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
-      xTaskCreatePinnedToCore(commandTask, "Cmd", COMMAND_TASK_STACK, &ctx, 1, nullptr, 1);
-      xTaskCreatePinnedToCore(networkTask, "Net", 4096, &ctx, 1, nullptr, 0);
-      xTaskCreatePinnedToCore(webUiTask, "WebUiTask", 4096, &ctx, 1, nullptr, 1);
+      // Core 1: task หนัก (sensor/control/webui)
+      // Core 0: task เบา (network, command)
+      xTaskCreatePinnedToCore(inputTask,   "In",         INPUT_TASK_STACK,   &ctx, 1, nullptr, 1);
+      xTaskCreatePinnedToCore(controlTask, "Ctrl",       CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
+      xTaskCreatePinnedToCore(commandTask, "Cmd",        COMMAND_TASK_STACK, &ctx, 1, nullptr, 0);
+      xTaskCreatePinnedToCore(networkTask, "Net",        4096,               &ctx, 1, nullptr, 0);
+      xTaskCreatePinnedToCore(webUiTask,   "WebUiTask",  4096,               &ctx, 1, nullptr, 1);
    }
 }
 
 void AppBoot::setup(SystemContext &ctx)
 {
    printBanner();
+
+   // ⚠️ ลำดับสำคัญ: initRelayPins ต้องมาก่อน initDrivers และ startTasks เสมอ
+   initRelayPins();     // ← boot glitch guard: ต้อง set inactive ก่อน FreeRTOS
 
    initI2C();
    initFileSystemAndSchedule(*ctx.airSchedule);
