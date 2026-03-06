@@ -18,6 +18,19 @@ namespace
       Serial.println("===== SmartFarm Booting... =====");
    }
 
+   
+   void initRelayPins()
+   {
+      // boot glitch mitigation: set relay pins to inactive as early as possible
+      const uint8_t inactive = RELAY_ACTIVE_LOW ? HIGH : LOW; // active-low: inactive=HIGH
+      pinMode(PIN_RELAY_WATER_PUMP, OUTPUT);
+      pinMode(PIN_RELAY_MIST, OUTPUT);
+      pinMode(PIN_RELAY_AIR_PUMP, OUTPUT);
+      digitalWrite(PIN_RELAY_WATER_PUMP, inactive);
+      digitalWrite(PIN_RELAY_MIST, inactive);
+      digitalWrite(PIN_RELAY_AIR_PUMP, inactive);
+   }
+
    void initI2C()
    {
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -96,11 +109,12 @@ namespace
          ctx.swManualAir->begin();
 
       // Water level alarm LEDs
+      const uint8_t LED_OFF = ALARM_LED_ACTIVE_HIGH ? LOW : HIGH;
       pinMode(PIN_WATER_LEVEL_CH1_ALARM_LED, OUTPUT);
       pinMode(PIN_WATER_LEVEL_CH2_ALARM_LED, OUTPUT);
-      digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LOW);
-      digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LOW);
-   }
+      digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LED_OFF);
+      digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LED_OFF);
+}
 
    static void initNetwork(SystemContext &ctx)
    {

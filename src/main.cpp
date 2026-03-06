@@ -11,6 +11,7 @@
 #include "drivers/Esp32WaterLevelInput.h"
 #include "drivers/Esp32NetModeSwitch.h"
 #include "drivers/Esp32Ds18b20.h"
+#include "drivers/Esp32ManualSwitch.h"
 
 #include "application/FarmManager.h"
 

@@ -3,7 +3,8 @@
 
 /**
  * Esp32ManualSwitch — อ่านสวิตช์ทางกายภาพแบบ active LOW + debounce
- * วงจร: GPIO --- pull-up 10kΩ --- 3.3V, สวิตช์ต่อ GPIO กับ GND
+ * default: ใช้ INPUT_PULLUP (pull-up ภายใน)
+ * optional: ถ้าสายยาว/มี noise สามารถเพิ่ม pull-up ภายนอก 10kΩ ไป 3.3V ได้
  * ไม่กด = HIGH, กด = LOW
  */
 class Esp32ManualSwitch
@@ -14,8 +15,8 @@ public:
 
    void begin()
    {
-      // ไม่ใช้ INPUT_PULLUP เพราะมี pull-up ภายนอกแล้ว
-      pinMode(_pin, INPUT);
+      // default: ใช้ pull-up ภายใน (และยังอนุญาตให้มี pull-up ภายนอกได้)
+      pinMode(_pin, INPUT_PULLUP);
       _stable = readRaw();
       _lastRaw = _stable;
       _lastChangeMs = millis();

@@ -1,4 +1,5 @@
 #include "drivers/Esp32Relay.h"
+#include "Config.h"
 
 /**
  * @brief Constructor สำหรับตั้งค่าเริ่มต้นของ Relay
@@ -19,7 +20,9 @@ bool Esp32Relay::begin() {
  * @brief สั่งเปิดอุปกรณ์ (Digital HIGH)
  */
 void Esp32Relay::turnOn() {
-    digitalWrite(_pin, HIGH); 
+    // normalize ตาม polarity ของโมดูล
+    const uint8_t level = RELAY_ACTIVE_LOW ? LOW : HIGH;
+    digitalWrite(_pin, level);
     _state = true;
 }
 
@@ -27,7 +30,9 @@ void Esp32Relay::turnOn() {
  * @brief สั่งปิดอุปกรณ์ (Digital LOW)
  */
 void Esp32Relay::turnOff() {
-    digitalWrite(_pin, LOW);
+    // normalize ตาม polarity ของโมดูล
+    const uint8_t level = RELAY_ACTIVE_LOW ? HIGH : LOW;
+    digitalWrite(_pin, level);
     _state = false;
 }
 
