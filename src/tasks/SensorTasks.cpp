@@ -60,17 +60,20 @@ static void updateWaterLevelAlarmLeds(const WaterLevelSensors &wl)
 		ledPhase = !ledPhase;
 	}
 
+	const uint8_t LED_ON  = ALARM_LED_ACTIVE_HIGH ? HIGH : LOW;
+	const uint8_t LED_OFF = ALARM_LED_ACTIVE_HIGH ? LOW  : HIGH;
+
 	// CH1
 	if (wl.ch1Low)
-		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, ledPhase ? HIGH : LOW);
+		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, ledPhase ? LED_ON : LED_OFF);
 	else
-		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LOW);
+		digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, LED_OFF);
 
 	// CH2
 	if (wl.ch2Low)
-		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, ledPhase ? HIGH : LOW);
+		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, ledPhase ? LED_ON : LED_OFF);
 	else
-		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LOW);
+		digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LED_OFF);
 }
 
 // ---------- Tasks ----------

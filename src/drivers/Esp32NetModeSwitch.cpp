@@ -3,7 +3,7 @@
 
 void Esp32NetModeSwitch::begin()
 {
-   pinMode(_pin, INPUT); // GPIO36 input-only ไม่มี pullup
+   pinMode(_pin, INPUT_PULLUP); // default: INPUT_PULLUP (GPIO39 input-only); logic: HIGH=STA, LOW=AP
    _stable = readRaw();
    _lastRaw = _stable;
    _lastChangeMs = millis();
@@ -11,8 +11,8 @@ void Esp32NetModeSwitch::begin()
 
 NetDesiredMode Esp32NetModeSwitch::readRaw() const
 {
-   // (active LOW) กด = LOW = STA_PREFERRED, ไม่กด = HIGH = AP_PRIMARY
-   return (digitalRead(_pin) == LOW)
+   // logic ตาม Config.h / README: HIGH = STA, LOW = AP
+   return (digitalRead(_pin) == HIGH)
               ? NetDesiredMode::STA_PREFERRED
               : NetDesiredMode::AP_PRIMARY;
 }

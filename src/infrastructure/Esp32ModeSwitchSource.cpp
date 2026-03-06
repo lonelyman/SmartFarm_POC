@@ -5,9 +5,9 @@ Esp32ModeSwitchSource::Esp32ModeSwitchSource(int pinA, int pinB)
 
 void Esp32ModeSwitchSource::begin()
 {
-   // NOTE: ถ้าใช้ GPIO 34-39 โดยมากไม่มี internal pull-up
-   pinMode(_pinA, INPUT);
-   pinMode(_pinB, INPUT);
+   // default: Active LOW + INPUT_PULLUP (ตาม Config.h)
+   pinMode(_pinA, INPUT_PULLUP);
+   pinMode(_pinB, INPUT_PULLUP);
 }
 
 SystemMode Esp32ModeSwitchSource::decode(int a, int b) const
