@@ -6,13 +6,23 @@
 #include "infrastructure/Esp32WebUi.h"
 #include "infrastructure/WifiConfigStore.h"
 
-Esp32WebUi::Esp32WebUi(SystemContext &ctx, uint16_t port)
-    : _ctx(ctx), _server(port), _started(false)
+Esp32WebUi::Esp32WebUi(uint16_t port)
+    : _ctx(nullptr), _server(port), _started(false)
 {
+}
+
+void Esp32WebUi::setContext(SystemContext *ctx)
+{
+   _ctx = ctx;
 }
 
 bool Esp32WebUi::begin()
 {
+   if (!_ctx)
+   {
+      Serial.println("❌ [WebUI] begin() called before setContext()");
+      return false;
+   }
    registerRoutes();
    Serial.println("ℹ️ WebUI: routes registered");
    return true;
@@ -83,7 +93,6 @@ void Esp32WebUi::registerRoutes()
    _server.on("/wifi-saved", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8"); });
 
-   // -------------------- NEW: Load existing WiFi config --------------------
    // GET /api/wifi/config -> {hasConfig, ssid, hasPassword, hostname}
    _server.on("/api/wifi/config", HTTP_GET, [&]()
               {
@@ -96,7 +105,6 @@ void Esp32WebUi::registerRoutes()
 
       bool hasPw = false;
       if (ok) {
-         // ถ้าอยากถือว่า password ว่าง = ไม่มี ก็ใช้ length()>0
          hasPw = (cfg.password.length() > 0);
       }
 
@@ -109,16 +117,16 @@ void Esp32WebUi::registerRoutes()
 
       _server.send(200, "application/json; charset=utf-8", json); });
 
-   // STATUS JSON (+ network fields + netMsg)
+   // STATUS JSON
    _server.on("/api/status", HTTP_GET, [&]()
               {
-      auto snap = _ctx.state->getSnapshot();
+      auto snap = _ctx->state->getSnapshot();
 
       const wifi_mode_t mode = WiFi.getMode();
       const bool staConnected = (WiFi.status() == WL_CONNECTED);
 
       char netMsg[96];
-      _ctx.state->getNetMessage(netMsg, sizeof(netMsg));
+      _ctx->state->getNetMessage(netMsg, sizeof(netMsg));
 
       IPAddress apIp(0, 0, 0, 0);
       if (mode == WIFI_AP || mode == WIFI_AP_STA) apIp = WiFi.softAPIP();
@@ -143,26 +151,26 @@ void Esp32WebUi::registerRoutes()
       json += "\"staConnected\":" + String(staConnected ? 1 : 0) + ",";
       json += "\"apIp\":\"" + apIp.toString() + "\",";
       json += "\"staIp\":\"" + staIp.toString() + "\",";
-      json += "\"netState\":" + String((int)_ctx.state->getNetState()) + ",";
+      json += "\"netState\":" + String((int)_ctx->state->getNetState()) + ",";
       json += "\"netMsg\":\"" + String(netMsg) + "\"";
       json += "}";
       _server.send(200, "application/json; charset=utf-8", json); });
 
    // mode control
    _server.on("/api/mode/auto", HTTP_POST, [&]()
-              { _ctx.state->setMode(SystemMode::AUTO); _server.send(204); });
+              { _ctx->state->setMode(SystemMode::AUTO); _server.send(204); });
    _server.on("/api/mode/manual", HTTP_POST, [&]()
-              { _ctx.state->setMode(SystemMode::MANUAL); _server.send(204); });
+              { _ctx->state->setMode(SystemMode::MANUAL); _server.send(204); });
    _server.on("/api/mode/idle", HTTP_POST, [&]()
-              { _ctx.state->setMode(SystemMode::IDLE); _server.send(204); });
+              { _ctx->state->setMode(SystemMode::IDLE); _server.send(204); });
 
-   // network control (ส่งแค่ command ให้ NetworkTask ไปทำ)
+   // network control
    _server.on("/api/net/on", HTTP_POST, [&]()
-              { _ctx.state->requestNetOn(); _server.send(204); });
+              { _ctx->state->requestNetOn(); _server.send(204); });
    _server.on("/api/net/off", HTTP_POST, [&]()
-              { _ctx.state->requestNetOff(); _server.send(204); });
+              { _ctx->state->requestNetOff(); _server.send(204); });
    _server.on("/api/ntp", HTTP_POST, [&]()
-              { _ctx.state->requestSyncNtp(); _server.send(204); });
+              { _ctx->state->requestSyncNtp(); _server.send(204); });
 
    // POST /save -> save /wifi.json -> show saved page -> reboot
    _server.on("/save", HTTP_POST, [&]()

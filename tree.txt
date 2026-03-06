@@ -7,6 +7,7 @@
 │       ├── dashboard.html
 │       ├── wifi-saved.html
 │       └── wifi.html
+├── default_16MB.csv
 ├── include
 │   ├── Config.h
 │   ├── application
@@ -16,6 +17,7 @@
 │   │   └── AirPumpSchedule.h
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.h
+│   │   ├── Esp32Ds18b20.h
 │   │   ├── Esp32ManualSwitch.h
 │   │   ├── Esp32NetModeSwitch.h
 │   │   ├── Esp32Relay.h
@@ -27,7 +29,6 @@
 │   │   ├── Esp32ModeSwitchSource.h
 │   │   ├── Esp32WebUi.h
 │   │   ├── Esp32WiFiNetwork.h
-│   │   ├── GlobalState.h
 │   │   ├── NetTimeSync.h
 │   │   ├── RtcClock.h
 │   │   ├── ScheduleStore.h
@@ -56,6 +57,7 @@
 │   │   └── AirPumpSchedule.cpp
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.cpp
+│   │   ├── Esp32Ds18b20.cpp
 │   │   ├── Esp32ManualSwitch.cpp
 │   │   ├── Esp32NetModeSwitch.cpp
 │   │   ├── Esp32Relay.cpp
@@ -80,4 +82,4 @@
 │   └── test_farmmanager.cpp
 └── tree.txt
 
-18 directories, 63 files
+18 directories, 65 files
