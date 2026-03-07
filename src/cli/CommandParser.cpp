@@ -3,14 +3,92 @@
 #include "Config.h"
 
 // ============================================================
+// Forward declarations
+// ============================================================
+
+static void cmdHelp(CommandService &svc, int argc, String argv[]);
+static void cmdStatus(CommandService &svc, int argc, String argv[]);
+static void cmdClear(CommandService &svc, int argc, String argv[]);
+static void cmdMode(CommandService &svc, int argc, String argv[]);
+static void cmdRelay(CommandService &svc, int argc, String argv[]);
+static void cmdNet(CommandService &svc, int argc, String argv[]);
+static void cmdClock(CommandService &svc, int argc, String argv[]);
+
+// ============================================================
+// Command Table
+// ============================================================
+
+static CliCommand commandTable[] =
+    {
+        {
+            "help",
+            cmdHelp,
+            "help",
+            "show command list",
+        },
+        {
+            "status",
+            cmdStatus,
+            "status",
+            "show system status",
+        },
+        {
+            "clear",
+            cmdClear,
+            "clear",
+            "clear manual overrides",
+        },
+        {
+            "mode",
+            cmdMode,
+            "mode auto|manual|idle",
+            "change system mode",
+        },
+        {
+            "relay",
+            cmdRelay,
+            "relay pump|mist|air on|off",
+            "control relay in MANUAL mode",
+        },
+        {
+            "net",
+            cmdNet,
+            "net on|off|ntp",
+            "network control",
+        },
+        {
+            "clock",
+            cmdClock,
+            "clock set HH:MM[:SS]",
+            "set system clock",
+        },
+};
+
+static const int commandCount =
+    sizeof(commandTable) / sizeof(commandTable[0]);
+
+// ============================================================
 // Command Handlers
 // ============================================================
 
 static void cmdHelp(CommandService &svc, int argc, String argv[])
 {
+   (void)svc;
    (void)argc;
    (void)argv;
-   svc.printHelp();
+
+   Serial.println("=== SmartFarm CLI ===");
+   Serial.println();
+
+   for (int i = 0; i < commandCount; i++)
+   {
+      Serial.printf("  %s %-28s %s\n",
+                    CLI_PREFIX,
+                    commandTable[i].usage,
+                    commandTable[i].description);
+   }
+
+   Serial.println();
 }
 
 static void cmdStatus(CommandService &svc, int argc, String argv[])
@@ -31,7 +109,6 @@ static void cmdMode(CommandService &svc, int argc, String argv[])
 {
    if (argc < 2)
    {
-      Serial.printf("usage: %s mode auto|manual|idle\n", CLI_PREFIX);
       return;
    }
 
@@ -47,17 +124,12 @@ static void cmdMode(CommandService &svc, int argc, String argv[])
    {
       svc.setModeIdle();
    }
-   else
-   {
-      Serial.println("[CLI] unknown mode");
-   }
 }
 
 static void cmdRelay(CommandService &svc, int argc, String argv[])
 {
    if (argc < 3)
    {
-      Serial.printf("usage: %s relay pump|mist|air on|off\n", CLI_PREFIX);
       return;
    }
 
@@ -66,7 +138,6 @@ static void cmdRelay(CommandService &svc, int argc, String argv[])
 
    if (!on && !off)
    {
-      Serial.println("[CLI] relay action must be on/off");
       return;
    }
 
@@ -82,17 +153,12 @@ static void cmdRelay(CommandService &svc, int argc, String argv[])
    {
       svc.relayAir(on);
    }
-   else
-   {
-      Serial.println("[CLI] unknown relay");
-   }
 }
 
 static void cmdNet(CommandService &svc, int argc, String argv[])
 {
    if (argc < 2)
    {
-      Serial.printf("usage: %s net on|off|ntp\n", CLI_PREFIX);
       return;
    }
 
@@ -108,23 +174,17 @@ static void cmdNet(CommandService &svc, int argc, String argv[])
    {
       svc.netNtp();
    }
-   else
-   {
-      Serial.println("[CLI] unknown net command");
-   }
 }
 
 static void cmdClock(CommandService &svc, int argc, String argv[])
 {
    if (argc < 3)
    {
-      Serial.printf("usage: %s clock set HH:MM[:SS]\n", CLI_PREFIX);
       return;
    }
 
    if (argv[1] != "set")
    {
-      Serial.println("[CLI] clock action must be 'set'");
       return;
    }
 
@@ -132,25 +192,7 @@ static void cmdClock(CommandService &svc, int argc, String argv[])
 }
 
 // ============================================================
-// Command Table
-// ============================================================
-
-static CliCommand commandTable[] =
-    {
-        {"help", cmdHelp},
-        {"status", cmdStatus},
-        {"clear", cmdClear},
-        {"mode", cmdMode},
-        {"relay", cmdRelay},
-        {"net", cmdNet},
-        {"clock", cmdClock},
-};
-
-static const int commandCount =
-    sizeof(commandTable) / sizeof(commandTable[0]);
-
-// ============================================================
-// CommandParser
+// Tokenizer
 // ============================================================
 
 int CommandParser::tokenize(const String &input, String tokens[], int maxTokens)
@@ -172,42 +214,47 @@ int CommandParser::tokenize(const String &input, String tokens[], int maxTokens)
       }
 
       int end = start;
+
       while (end < len && input[end] != ' ')
       {
          end++;
       }
 
       tokens[count++] = input.substring(start, end);
+
       start = end + 1;
    }
 
    return count;
 }
 
-void CommandParser::parse(CommandService &svc, const String &line)
+// ============================================================
+// Parser
+// ============================================================
+
+CliParseResult CommandParser::parse(CommandService &svc, const String &line)
 {
    String input = line;
    input.trim();
    input.toLowerCase();
 
    String tokens[6];
+
    const int argc = tokenize(input, tokens, 6);
 
    if (argc == 0)
    {
-      return;
+      return {CliParseCode::Empty, nullptr};
    }
 
    if (tokens[0] != CLI_PREFIX)
    {
-      Serial.printf("[CLI] ignored: command must start with '%s'\n", CLI_PREFIX);
-      return;
+      return {CliParseCode::MissingPrefix, "[CLI] command must start with CLI prefix"};
    }
 
    if (argc < 2)
    {
-      Serial.println("[CLI] missing command");
-      return;
+      return {CliParseCode::MissingCommand, "[CLI] missing command"};
    }
 
    const String cmd = tokens[1];
@@ -216,13 +263,10 @@ void CommandParser::parse(CommandService &svc, const String &line)
    {
       if (cmd == commandTable[i].name)
       {
-         // ส่งต่อแบบตัด prefix ออก
-         // เช่น "sm mode auto"
-         // argv[0] = "mode", argv[1] = "auto"
          commandTable[i].handler(svc, argc - 1, &tokens[1]);
-         return;
+         return {CliParseCode::Ok, nullptr};
       }
    }
 
-   Serial.println("[CLI] unknown command");
+   return {CliParseCode::UnknownCommand, "[CLI] unknown command"};
 }
