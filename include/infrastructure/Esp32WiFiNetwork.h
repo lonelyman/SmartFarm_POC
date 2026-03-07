@@ -1,34 +1,40 @@
 // include/infrastructure/Esp32WiFiNetwork.h
 #pragma once
+
 #include <Arduino.h>
 #include <WiFi.h>
 
 #include "infrastructure/WifiConfigStore.h"
 #include "interfaces/INetwork.h"
 
+// ============================================================
+//  Esp32WiFiNetwork — WiFi AP+STA สำหรับ ESP32-S3
+//
+//  Design: AP-first — startAp() ก่อนเสมอ แล้วค่อย startStaConnect()
+//  Config: โหลดจาก /wifi.json ผ่าน WifiConfigStore
+//
+//  ใช้งาน (AppBoot):
+//    1. ctx.network->begin()         ← โหลด config
+//    2. ctx.network->startAp()       ← เปิด AP
+//    3. ctx.network->startStaConnect() ← เริ่ม STA (non-blocking)
+//    4. NetworkTask เรียก pollStaConnected() ทุก loop
+// ============================================================
+
 class Esp32WiFiNetwork : public INetwork
 {
 public:
-   // ✅ ทำให้ไม่ต้อง hardcode แล้ว
-   Esp32WiFiNetwork(const char *ssid = nullptr, const char *pass = nullptr, const char *configPath = "/wifi.json");
+   // ssid/pass: hardcode fallback ถ้าไม่มีไฟล์ — ปกติปล่อย nullptr
+   Esp32WiFiNetwork(const char *ssid = nullptr,
+                    const char *pass = nullptr,
+                    const char *configPath = "/wifi.json");
 
    void begin() override;
-
-   // legacy blocking
    bool ensureConnected(uint32_t timeoutMs) override;
-
    bool isConnected() const override;
-   void disconnect() override;
-
    bool hasValidConfig() const override;
-
-   // AP-first
+   void disconnect() override;
    void startAp() override;
-
-   // STA-only off (keep AP)
    void disconnectStaOnly() override;
-
-   // ===================== Production-grade (non-blocking STA) =====================
    void startStaConnect() override;
    bool pollStaConnected() const override;
 

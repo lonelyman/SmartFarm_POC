@@ -1,3 +1,4 @@
+// src/tasks/CommandTask.cpp
 #include <Arduino.h>
 
 #include "Config.h"
@@ -5,28 +6,61 @@
 #include "infrastructure/SystemContext.h"
 #include "interfaces/Types.h"
 
-// cooldown กัน spam command รัวๆ
-static uint32_t lastCommandMs = 0;
-static const uint32_t CMD_COOLDOWN_MS = 200;
+// ============================================================
+//  Helpers
+// ============================================================
 
-static void applyManualChange(SystemContext &ctx,
-                              bool pumpOn, bool mistOn, bool airOn,
-                              bool setPump, bool setMist, bool setAir)
+static void printHelp()
 {
-    ManualOverrides m = ctx.state->getManualOverrides();
+    Serial.println("=== SmartFarm Commands ===");
+    Serial.println("Mode:");
+    Serial.println("  -auto  | --a");
+    Serial.println("  -manual | --m");
+    Serial.println("  -idle  | --i");
+    Serial.println("Manual relay (MANUAL mode only):");
+    Serial.println("  -pump on/off");
+    Serial.println("  -mist on/off");
+    Serial.println("  -air  on/off");
+    Serial.println("  -clear           reset manual overrides");
+    Serial.println("Network:");
+    Serial.println("  -net on/off      connect / disconnect WiFi STA");
+    Serial.println("  -ntp             sync RTC from NTP (STA required)");
+    Serial.println("Clock:");
+    Serial.println("  time=HH:MM[:SS]  set RTC time");
+    Serial.println("  -help            show this help");
+}
 
-    // NOTE: ฟิลด์เหล่านี้ต้องมีใน Types.h ตามที่คุณใช้อยู่
-    if (setPump)
-        m.wantPumpOn = pumpOn;
-    if (setMist)
-        m.wantMistOn = mistOn;
-    if (setAir)
-        m.wantAirOn = airOn;
+// อ่าน Serial ทีละตัวอักษร แบบ non-blocking
+// คืน true เมื่อได้ครบ 1 บรรทัด (newline)
+static bool readLineNonBlocking(String &lineBuffer, String &out)
+{
+    while (Serial.available() > 0)
+    {
+        const char c = static_cast<char>(Serial.read());
 
-    // ถ้าคุณมี flag isUpdated ใช้อยู่ ให้คงไว้ (เพื่อให้ FarmManager/ControlTask รู้ว่ามีการเปลี่ยน)
-    m.isUpdated = true;
+        if (c == '\r')
+            continue;
 
-    ctx.state->setManualOverrides(m);
+        if (c == '\n')
+        {
+            out = lineBuffer;
+            lineBuffer = "";
+            out.trim();
+            return out.length() > 0;
+        }
+
+        // backspace / delete
+        if (c == 8 || c == 127)
+        {
+            if (lineBuffer.length() > 0)
+                lineBuffer.remove(lineBuffer.length() - 1);
+            continue;
+        }
+
+        if (lineBuffer.length() < 96)
+            lineBuffer += c;
+    }
+    return false;
 }
 
 static bool parseTimePayload(const String &payload, int &h, int &m, int &s)
@@ -34,25 +68,24 @@ static bool parseTimePayload(const String &payload, int &h, int &m, int &s)
     String p = payload;
     p.trim();
 
-    int c1 = p.indexOf(':');
+    const int c1 = p.indexOf(':');
     if (c1 < 0)
         return false;
 
-    int c2 = p.indexOf(':', c1 + 1);
+    const int c2 = p.indexOf(':', c1 + 1);
 
     if (c2 < 0)
     {
-        // HH:MM
         h = p.substring(0, c1).toInt();
         m = p.substring(c1 + 1).toInt();
         s = 0;
-        return true;
     }
-
-    // HH:MM:SS
-    h = p.substring(0, c1).toInt();
-    m = p.substring(c1 + 1, c2).toInt();
-    s = p.substring(c2 + 1).toInt();
+    else
+    {
+        h = p.substring(0, c1).toInt();
+        m = p.substring(c1 + 1, c2).toInt();
+        s = p.substring(c2 + 1).toInt();
+    }
     return true;
 }
 
@@ -62,10 +95,10 @@ static void requestTimeSet(SystemContext &ctx, const String &inputRaw)
     cmd.trim();
     cmd.toLowerCase();
 
-    int pos = cmd.indexOf("time=");
+    const int pos = cmd.indexOf("time=");
     if (pos < 0)
     {
-        Serial.println("[CMD] invalid TIME format (need time=HH:MM or time=HH:MM:SS)");
+        Serial.println("[CMD] invalid format (use time=HH:MM or time=HH:MM:SS)");
         return;
     }
 
@@ -75,97 +108,72 @@ static void requestTimeSet(SystemContext &ctx, const String &inputRaw)
     int h = 0, m = 0, s = 0;
     if (!parseTimePayload(payload, h, m, s))
     {
-        Serial.println("[CMD] TIME format error (need HH:MM or HH:MM:SS)");
+        Serial.println("[CMD] time format error");
         return;
     }
 
     if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59)
     {
-        Serial.println("[CMD] TIME value out of range");
+        Serial.println("[CMD] time value out of range");
         return;
     }
 
-    // ✅ ไม่แตะ RTC/Driver: ส่งคำขอผ่าน SharedState
-    ctx.state->requestSetClockTime((uint8_t)h, (uint8_t)m, (uint8_t)s);
+    ctx.state->requestSetClockTime(
+        static_cast<uint8_t>(h),
+        static_cast<uint8_t>(m),
+        static_cast<uint8_t>(s));
 
     Serial.printf("[CMD] time set requested: %02d:%02d:%02d\n", h, m, s);
 }
 
-static void printHelp()
+// set manual override field เดียว — อ่าน state ปัจจุบันก่อนเสมอ (read-modify-write)
+static void setManual(SystemContext &ctx,
+                      bool *pump, bool *mist, bool *air)
 {
-    Serial.println("=== SmartFarm Commands ===");
-    Serial.println("Modes:");
-    Serial.println("  -auto | --a");
-    Serial.println("  -manual | --m");
-    Serial.println("  -idle | --i");
-    Serial.println("Manual relay (MANUAL only):");
-    Serial.println("  -pump on/off");
-    Serial.println("  -mist on/off");
-    Serial.println("  -air  on/off");
-    Serial.println("Other:");
-    Serial.println("  -clear              (reset manual overrides, keep mode)");
-    Serial.println("  time=HH:MM[:SS]     (request set clock time)");
+    ManualOverrides m = ctx.state->getManualOverrides();
+    if (pump)
+        m.wantPumpOn = *pump;
+    if (mist)
+        m.wantMistOn = *mist;
+    if (air)
+        m.wantAirOn = *air;
+    m.isUpdated = true;
+    ctx.state->setManualOverrides(m);
 }
 
-static String g_line;
-static bool readLineNonBlocking(String &out)
-{
-    while (Serial.available() > 0)
-    {
-        char c = (char)Serial.read();
-
-        // ignore CR
-        if (c == '\r')
-            continue;
-
-        // newline -> commit
-        if (c == '\n')
-        {
-            out = g_line;
-            g_line = "";
-            out.trim();
-            return out.length() > 0;
-        }
-
-        // backspace / delete
-        if (c == 8 || c == 127)
-        {
-            if (g_line.length() > 0)
-                g_line.remove(g_line.length() - 1);
-            continue;
-        }
-
-        // normal char (cap length)
-        if (g_line.length() < 96)
-            g_line += c;
-    }
-    return false;
-}
+// ============================================================
+//  commandTask
+// ============================================================
 
 void commandTask(void *pvParameters)
 {
     auto *ctx = static_cast<SystemContext *>(pvParameters);
-    if (ctx == nullptr || ctx->state == nullptr)
+    if (!ctx || !ctx->state)
     {
         vTaskDelete(nullptr);
         return;
     }
 
-    Serial.println("ℹ️ Command Processor: Active");
+    Serial.println("ℹ️ CommandTask: Active");
     printHelp();
+
+    String lineBuffer;
+    uint32_t lastCommandMs = 0;
 
     while (true)
     {
         String input;
-        if (!readLineNonBlocking(input))
+        if (!readLineNonBlocking(lineBuffer, input))
         {
             vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
             continue;
         }
+
         Serial.printf("\n> %s\n", input.c_str());
 
-        uint32_t now = millis();
-        if (now - lastCommandMs < CMD_COOLDOWN_MS)
+        // cooldown กัน spam
+        const uint32_t now = millis();
+        if (now - lastCommandMs < 200)
         {
             Serial.println("⏱ CMD ignored: too fast");
             vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
@@ -176,30 +184,31 @@ void commandTask(void *pvParameters)
         String lower = input;
         lower.toLowerCase();
 
-        SystemStatus snap = ctx->state->getSnapshot();
+        const SystemStatus snap = ctx->state->getSnapshot();
+        const bool isManual = snap.mode == SystemMode::MANUAL;
 
-        // ---- Help
+        // --- Help ---
         if (lower == "-help" || lower == "--help" || lower == "help")
         {
             printHelp();
         }
-        // ---- Mode commands
+        // --- Mode ---
         else if (lower == "-auto" || lower == "--a")
         {
             ctx->state->setMode(SystemMode::AUTO);
-            Serial.println("[CMD] mode -> AUTO");
+            Serial.println("[CMD] mode → AUTO");
         }
         else if (lower == "-manual" || lower == "--m")
         {
             ctx->state->setMode(SystemMode::MANUAL);
-            Serial.println("[CMD] mode -> MANUAL");
+            Serial.println("[CMD] mode → MANUAL");
         }
         else if (lower == "-idle" || lower == "--i")
         {
             ctx->state->setMode(SystemMode::IDLE);
-            Serial.println("[CMD] mode -> IDLE");
+            Serial.println("[CMD] mode → IDLE");
         }
-        // ---- Clear overrides (does not change mode)
+        // --- Clear overrides ---
         else if (lower == "-clear")
         {
             ManualOverrides m{};
@@ -207,85 +216,63 @@ void commandTask(void *pvParameters)
             ctx->state->setManualOverrides(m);
             Serial.println("[CMD] manual overrides cleared");
         }
-        // ---- Manual relay control (MANUAL only)
-        else if (lower == "-pump on")
+        // --- Manual relay (MANUAL only) ---
+        else if (lower == "-pump on" || lower == "-pump off")
         {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] pump on ignored (not MANUAL)");
+            if (!isManual)
+            {
+                Serial.println("[CMD] ignored: not MANUAL");
+            }
             else
             {
-                applyManualChange(*ctx, true, false, false, true, false, false);
-                Serial.println("[CMD] pump -> ON");
+                bool v = (lower == "-pump on");
+                setManual(*ctx, &v, nullptr, nullptr);
+                Serial.printf("[CMD] pump → %s\n", v ? "ON" : "OFF");
             }
         }
-        else if (lower == "-pump off")
+        else if (lower == "-mist on" || lower == "-mist off")
         {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] pump off ignored (not MANUAL)");
+            if (!isManual)
+            {
+                Serial.println("[CMD] ignored: not MANUAL");
+            }
             else
             {
-                applyManualChange(*ctx, false, false, false, true, false, false);
-                Serial.println("[CMD] pump -> OFF");
+                bool v = (lower == "-mist on");
+                setManual(*ctx, nullptr, &v, nullptr);
+                Serial.printf("[CMD] mist → %s\n", v ? "ON" : "OFF");
             }
         }
-        else if (lower == "-mist on")
+        else if (lower == "-air on" || lower == "-air off")
         {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] mist on ignored (not MANUAL)");
+            if (!isManual)
+            {
+                Serial.println("[CMD] ignored: not MANUAL");
+            }
             else
             {
-                applyManualChange(*ctx, false, true, false, false, true, false);
-                Serial.println("[CMD] mist -> ON");
+                bool v = (lower == "-air on");
+                setManual(*ctx, nullptr, nullptr, &v);
+                Serial.printf("[CMD] air → %s\n", v ? "ON" : "OFF");
             }
         }
-        else if (lower == "-mist off")
-        {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] mist off ignored (not MANUAL)");
-            else
-            {
-                applyManualChange(*ctx, false, false, false, false, true, false);
-                Serial.println("[CMD] mist -> OFF");
-            }
-        }
-        else if (lower == "-air on")
-        {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] air on ignored (not MANUAL)");
-            else
-            {
-                applyManualChange(*ctx, false, false, true, false, false, true);
-                Serial.println("[CMD] air -> ON");
-            }
-        }
-        else if (lower == "-air off")
-        {
-            if (snap.mode != SystemMode::MANUAL)
-                Serial.println("[CMD] air off ignored (not MANUAL)");
-            else
-            {
-                applyManualChange(*ctx, false, false, false, false, false, true);
-                Serial.println("[CMD] air -> OFF");
-            }
-        }
+        // --- Network ---
         else if (lower == "-net on")
         {
             ctx->state->requestNetOn();
             Serial.println("[CMD] net on requested");
-            Serial.printf("CMD state=%p\n", ctx->state);
         }
         else if (lower == "-net off")
         {
             ctx->state->requestNetOff();
             Serial.println("[CMD] net off requested");
         }
-        else if (lower == "-netuptime")
+        else if (lower == "-ntp")
         {
             ctx->state->requestSyncNtp();
-            Serial.println("[CMD] ntp sync requested");
+            Serial.println("[CMD] NTP sync requested");
         }
-
-        // ---- Set time (request via SharedState)
+        // --- Clock ---
         else if (lower.indexOf("time=") >= 0)
         {
             requestTimeSet(*ctx, input);

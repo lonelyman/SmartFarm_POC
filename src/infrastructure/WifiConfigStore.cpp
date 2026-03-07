@@ -4,6 +4,10 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
+// ============================================================
+//  Helpers
+// ============================================================
+
 static String getStringOrEmpty(JsonVariantConst v)
 {
    if (v.is<const char *>())
@@ -11,21 +15,24 @@ static String getStringOrEmpty(JsonVariantConst v)
    return String();
 }
 
-// ✅ โปรดักชันนิยม: Store ไม่ควร LittleFS.begin() เอง
-// ให้ AppBoot เป็นคน mount ครั้งเดียว
-static bool ensureFsMounted()
+// ESP32 Arduino ไม่ expose isMounted() ตรงๆ
+// ใช้ exists("/") เป็น idiom ตรวจ mount — root path ต้องมีเสมอถ้า mount สำเร็จ
+static bool isMounted()
 {
-   // ถ้า mount แล้ว root path จะ exists ได้
    if (LittleFS.exists("/"))
       return true;
 
-   Serial.println("⚠️ [WiFiCFG] LittleFS not mounted (mount in AppBoot)");
+   Serial.println("⚠️ [WiFiCFG] LittleFS not mounted — call LittleFS.begin() in AppBoot");
    return false;
 }
 
+// ============================================================
+//  load
+// ============================================================
+
 bool WifiConfigStore::load(WifiConfig &out)
 {
-   if (!ensureFsMounted())
+   if (!isMounted())
       return false;
 
    if (!LittleFS.exists(_path))
@@ -58,16 +65,18 @@ bool WifiConfigStore::load(WifiConfig &out)
    if (out.hostname.length() == 0)
       out.hostname = "smartfarm";
 
-   Serial.printf("✅ [WiFiCFG] loaded: ssid='%s' hostname='%s'\n",
-                 out.ssid.c_str(),
-                 out.hostname.c_str());
-
+   // ไม่ log password
+   Serial.printf("✅ [WiFiCFG] loaded: ssid='%s' hostname='%s'\n", out.ssid.c_str(), out.hostname.c_str());
    return true;
 }
 
+// ============================================================
+//  save
+// ============================================================
+
 bool WifiConfigStore::save(const WifiConfig &cfg)
 {
-   if (!ensureFsMounted())
+   if (!isMounted())
       return false;
 
    File f = LittleFS.open(_path, "w");
@@ -80,7 +89,7 @@ bool WifiConfigStore::save(const WifiConfig &cfg)
    JsonDocument doc;
    doc["ssid"] = cfg.ssid;
    doc["password"] = cfg.password;
-   doc["hostname"] = (cfg.hostname.length() > 0) ? cfg.hostname : "smartfarm";
+   doc["hostname"] = cfg.hostname.length() > 0 ? cfg.hostname : "smartfarm";
 
    if (serializeJsonPretty(doc, f) == 0)
    {

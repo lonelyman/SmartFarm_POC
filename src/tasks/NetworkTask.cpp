@@ -3,10 +3,9 @@
 
 #include "tasks/TaskEntrypoints.h"
 #include "infrastructure/SystemContext.h"
-#include "infrastructure/SharedState.h" // NetCommand / NetCmdType
-#include "interfaces/INetModeSource.h"  // NetDesiredMode (for net switch)
+#include "infrastructure/SharedState.h"
+#include "interfaces/INetModeSource.h"
 
-// AP-first policy
 static const uint32_t NET_CONNECT_TIMEOUT_MS = 15000;
 
 namespace
@@ -16,7 +15,7 @@ namespace
       Idle = 0,
       Connecting,
       Connected,
-      Failed
+      Failed,
    };
 }
 
@@ -32,35 +31,30 @@ void networkTask(void *pvParameters)
    Serial.println("🌐 NetworkTask: Boot");
 
    if (!ctx->netModeSource)
-   {
-      Serial.println("⚠️ NetworkTask: netModeSource is null (net switch ignored)");
-   }
+      Serial.println("⚠️ NetworkTask: netModeSource null (net switch ignored)");
 
-   // NOTE:
-   // network->begin() is initialized in AppBoot::initNetwork(ctx).
-   // Do NOT call begin() again here to avoid duplicate config loads/log spam.
+   // network->begin() ถูกเรียกใน AppBoot::initNetwork() แล้ว — ไม่เรียกซ้ำ
 
-   // 1) Boot policy: เปิด AP เป็นค่าเริ่มต้นเสมอ (offline-first)
+   // 1) Boot policy: เปิด AP ก่อนเสมอ (offline-first)
    ctx->network->startAp();
    ctx->state->setNetState(NetState::AP_PRIMARY);
-   ctx->state->setNetMessage("AP ready. You can use dashboard via AP (192.168.4.1).");
+   ctx->state->setNetMessage("AP ready (192.168.4.1)");
 
-   // --- STA connect state machine ---
+   // --- STA state machine ---
    StaConnState staState = StaConnState::Idle;
    uint32_t staStartMs = 0;
 
+   // Net switch edge-trigger — ต้องเป็น local ไม่ใช่ static
+   // เพื่อให้ reset ได้ถ้า task restart
+   bool swInited = false;
+   NetDesiredMode lastSw = NetDesiredMode::AP_PRIMARY;
+
    while (true)
    {
-      // --- NET switch -> NetCommand (edge-trigger) ---
-      // Policy mapping:
-      // - AP_PRIMARY => STA OFF
-      // - any other mode => STA ON
-      static bool swInited = false;
-      static NetDesiredMode lastSw = NetDesiredMode::AP_PRIMARY;
-
+      // --- Net switch → NetCommand (edge-trigger) ---
       if (ctx->netModeSource)
       {
-         NetDesiredMode sw = ctx->netModeSource->read();
+         const NetDesiredMode sw = ctx->netModeSource->read();
 
          if (!swInited)
          {
@@ -70,7 +64,6 @@ void networkTask(void *pvParameters)
          else if (sw != lastSw)
          {
             lastSw = sw;
-
             if (sw == NetDesiredMode::AP_PRIMARY)
                ctx->state->requestNetOff();
             else
@@ -78,7 +71,7 @@ void networkTask(void *pvParameters)
          }
       }
 
-      // --- Handle incoming NetCommands ---
+      // --- Handle NetCommands ---
       NetCommand cmd;
       if (ctx->state->consumeNetCommand(cmd))
       {
@@ -88,27 +81,25 @@ void networkTask(void *pvParameters)
          {
             if (!ctx->network->hasValidConfig())
             {
-               Serial.println("⚠️ NET_ON requested but no valid config → stay AP");
+               Serial.println("⚠️ [NET] NetOn: no config → stay AP");
                ctx->state->setNetState(NetState::AP_PRIMARY);
                ctx->state->setNetMessage("No WiFi config. Open /wifi to set SSID/password.");
                staState = StaConnState::Idle;
                break;
             }
 
-            // If already connected, just reflect status
             if (ctx->network->pollStaConnected())
             {
-               Serial.println("✅ STA already connected (AP kept)");
+               Serial.println("✅ [NET] STA already connected");
                ctx->state->setNetState(NetState::STA_CONNECTED);
-               ctx->state->setNetMessage("STA already connected. You can open via LAN too.");
+               ctx->state->setNetMessage("STA connected.");
                staState = StaConnState::Connected;
                break;
             }
 
-            Serial.println("📡 NET_ON → start STA connect (non-blocking, keep AP)");
+            Serial.println("📡 [NET] NetOn → startStaConnect (AP kept)");
             ctx->state->setNetState(NetState::STA_CONNECTING);
-            ctx->state->setNetMessage("Connecting STA...");
-
+            ctx->state->setNetMessage("Connecting to WiFi...");
             ctx->network->startStaConnect();
             staStartMs = millis();
             staState = StaConnState::Connecting;
@@ -117,18 +108,35 @@ void networkTask(void *pvParameters)
 
          case NetCmdType::NetOff:
          {
-            Serial.println("📴 NET_OFF → disconnect STA only (keep AP)");
+            Serial.println("📴 [NET] NetOff → disconnectStaOnly (AP kept)");
             ctx->network->disconnectStaOnly();
             ctx->state->setNetState(NetState::STA_STOPPED);
-            ctx->state->setNetMessage("STA disconnected. AP mode active.");
+            ctx->state->setNetMessage("WiFi disconnected. AP mode active.");
             staState = StaConnState::Idle;
             break;
          }
 
          case NetCmdType::SyncNtp:
          {
-            Serial.println("⏱ SYNC_NTP requested");
-            ctx->state->setNetMessage("NTP sync requested.");
+            // ต้อง STA connected ก่อนเท่านั้น
+            if (!ctx->network->isConnected())
+            {
+               Serial.println("⚠️ [NTP] SyncNtp skipped: STA not connected");
+               ctx->state->setNetMessage("NTP sync failed: not connected.");
+               break;
+            }
+
+            if (!ctx->clock)
+            {
+               Serial.println("⚠️ [NTP] SyncNtp skipped: clock is null");
+               break;
+            }
+
+            ctx->state->setNetMessage("Syncing time from NTP...");
+            if (ctx->clock->syncFromNetwork())
+               ctx->state->setNetMessage("NTP sync OK.");
+            else
+               ctx->state->setNetMessage("NTP sync failed.");
             break;
          }
 
@@ -138,34 +146,32 @@ void networkTask(void *pvParameters)
          }
       }
 
+      // --- Connecting: poll timeout ---
       if (staState == StaConnState::Connecting)
       {
          if (ctx->network->pollStaConnected())
          {
-            Serial.println("✅ STA connected (AP kept)");
+            Serial.println("✅ [NET] STA connected (AP kept)");
             ctx->state->setNetState(NetState::STA_CONNECTED);
-            ctx->state->setNetMessage("STA connected. You can open via LAN too.");
+            ctx->state->setNetMessage("WiFi connected.");
             staState = StaConnState::Connected;
          }
-         else
+         else if (millis() - staStartMs >= NET_CONNECT_TIMEOUT_MS)
          {
-            const uint32_t now = millis();
-            if (now - staStartMs >= NET_CONNECT_TIMEOUT_MS)
-            {
-               Serial.println("❌ STA connect timeout (stay AP)");
-               ctx->network->disconnectStaOnly();
-               ctx->state->setNetState(NetState::STA_FAILED);
-               ctx->state->setNetMessage("STA timeout. Still in AP mode. Check WiFi then retry.");
-               staState = StaConnState::Failed;
-            }
+            Serial.println("❌ [NET] STA timeout → stay AP");
+            ctx->network->disconnectStaOnly();
+            ctx->state->setNetState(NetState::STA_FAILED);
+            ctx->state->setNetMessage("WiFi timeout. Check credentials then retry.");
+            staState = StaConnState::Failed;
          }
       }
 
+      // --- Connected: detect drop ---
       if (staState == StaConnState::Connected && !ctx->network->pollStaConnected())
       {
-         Serial.println("⚠️ STA dropped (AP kept)");
+         Serial.println("⚠️ [NET] STA dropped → AP only");
          ctx->state->setNetState(NetState::AP_PRIMARY);
-         ctx->state->setNetMessage("STA dropped. AP mode active.");
+         ctx->state->setNetMessage("WiFi dropped. AP mode active.");
          staState = StaConnState::Idle;
       }
 
