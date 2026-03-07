@@ -12,9 +12,11 @@
 │   ├── Config.h
 │   ├── application
 │   │   ├── FarmManager.h
-│   │   └── FarmModels.h
+│   │   ├── FarmModels.h
+│   │   └── ScheduledRelay.h
 │   ├── domain
-│   │   └── AirPumpSchedule.h
+│   │   ├── TimeSchedule.h
+│   │   └── TimeWindow.h
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.h
 │   │   ├── Esp32Ds18b20.h
@@ -41,6 +43,7 @@
 │   │   ├── IModeSource.h
 │   │   ├── INetModeSource.h
 │   │   ├── INetwork.h
+│   │   ├── ISchedule.h
 │   │   ├── ISensor.h
 │   │   ├── IUi.h
 │   │   └── Types.h
@@ -52,9 +55,10 @@
 ├── src
 │   ├── application
 │   │   ├── FarmManager.cpp
+│   │   ├── ScheduledRelay.cpp
 │   │   └── WebUiTask.cpp
 │   ├── domain
-│   │   └── AirPumpSchedule.cpp
+│   │   └── TimeSchedule.cpp
 │   ├── drivers
 │   │   ├── Esp32Bh1750Light.cpp
 │   │   ├── Esp32Ds18b20.cpp
@@ -69,6 +73,7 @@
 │   │   ├── Esp32WebUi.cpp
 │   │   ├── Esp32WiFiNetwork.cpp
 │   │   ├── NetTimeSync.cpp
+│   │   ├── RtcClock.cpp
 │   │   ├── ScheduleStore.cpp
 │   │   ├── SharedState.cpp
 │   │   └── WifiConfigStore.cpp
@@ -78,8 +83,7 @@
 │       ├── NetworkTask.cpp
 │       └── SensorTasks.cpp
 ├── test
-│   ├── README
 │   └── test_farmmanager.cpp
 └── tree.txt
 
-18 directories, 65 files
+18 directories, 69 files
