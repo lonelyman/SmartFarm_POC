@@ -1,15 +1,18 @@
+// include/infrastructure/NetTimeSync.h
 #pragma once
-
-#include <Arduino.h>
 
 class RtcDs3231Time;
 
-// โมดูลนี้ดูแลเรื่อง WiFi + NTP + sync RTC
+// ============================================================
+//  NetTimeSync — Sync เวลาจาก NTP → RTC DS3231
+//
+//  ⚠️  WiFi ต้อง connected ก่อนแล้ว — NetworkTask จัดการ
+//  ใช้งาน:
+//    NetworkTask เรียก NetTimeSync::syncRtcFromNtp(rtc)
+//    หลังจาก STA connected สำเร็จ
+// ============================================================
+
 namespace NetTimeSync
 {
-   // ถ้าจำเป็นจะเชื่อม WiFi ให้ (lazy connect)
-   void connectWifiIfNeeded();
-
-   // sync เวลา NTP → RTC DS3231
    bool syncRtcFromNtp(RtcDs3231Time &rtc);
 }
