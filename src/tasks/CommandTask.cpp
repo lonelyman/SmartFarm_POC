@@ -97,7 +97,12 @@ void commandTask(void *pvParameters)
         lastCommandMs = now;
 
         // ส่ง command เข้า parser
-        g_cli.parse(svc, input);
+        CliParseResult r = g_cli.parse(svc, input);
+
+        if (r.code != CliParseCode::Ok && r.message)
+        {
+            Serial.println(r.message);
+        }
 
         vTaskDelay(pdMS_TO_TICKS(COMMAND_TASK_INTERVAL_MS));
     }

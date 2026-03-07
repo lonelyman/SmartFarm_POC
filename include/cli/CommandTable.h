@@ -9,4 +9,7 @@ struct CliCommand
 {
    const char *name;
    CliHandler handler;
+
+   const char *usage;
+   const char *description;
 };
