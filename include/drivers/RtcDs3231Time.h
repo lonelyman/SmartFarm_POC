@@ -1,38 +1,42 @@
-#ifndef RTC_DS3231_TIME_H
-#define RTC_DS3231_TIME_H
+// include/drivers/RtcDs3231Time.h
+#pragma once
 
 #include <Arduino.h>
-#include <RTClib.h>              // ใช้ไลบรารี DS3231 (Adafruit RTClib)
-#include "../interfaces/Types.h" // ใช้ TimeOfDay / toMinutesOfDay
+#include <RTClib.h>
+#include "../interfaces/Types.h"
 
-/**
- * @brief ตัวอ่านเวลาแบบใช้ DS3231 ผ่าน I2C (21/22)
- *
- * ใช้หน้าที่หลัก 2 อย่าง:
- *  - begin()          : เรียกตอน boot เพื่อตรวจว่าเจอ DS3231 ไหม
- *  - getMinutesOfDay(): ขอเวลาเป็นนาทีของวัน (0..1439)
- */
+// ============================================================
+//  RtcDs3231Time
+//  Driver อ่าน/เขียนเวลากับ DS3231 ผ่าน I2C
+//
+//  วงจรต่อขา:
+//    [DS3231 VCC] ──── [3.3V]
+//    [DS3231 GND] ──── [GND]
+//    [DS3231 SDA](1) ──(1)[GPIO8 (SDA)](1.1)──(1.1)[R4.7kΩ](1.2)──(1.2)[3V3]
+//    [DS3231 SCL](2) ──(2)[GPIO9 (SCL)](2.1)──(2.1)[R4.7kΩ](2.2)──(2.2)[3V3]
+//
+//  ⚠️  R4.7kΩ ค่อมครั้งเดียวที่ bus — ไม่ต้องค่อมซ้ำถ้ามีหลาย device (BH1750, SHT40)
+//  ⚠️  Wire.begin() ต้องทำใน AppBoot เท่านั้น
+//
+//  หน้าที่หลัก:
+//    begin()           — ตรวจหา DS3231 บน I2C + ตั้งเวลาจาก compile time ถ้า lostPower
+//    getMinutesOfDay() — คืนเวลาเป็นนาทีของวัน (0–1439) ใช้กับตารางเวลา air pump
+//    setTimeOfDay()    — ตั้งเวลาจาก CommandTask / WebUI
+// ============================================================
+
 class RtcDs3231Time
 {
 public:
    RtcDs3231Time();
 
-   // เรียกจาก setup()
    bool begin();
-
    bool isOk() const;
 
-   // ขอเวลาแบบชั่วโมง/นาที/วินาที
    bool getTimeOfDay(TimeOfDay &out);
-
-   // ขอเป็น "นาทีของวัน" 0..1439 (ใช้กับตารางเวลา)
    bool getMinutesOfDay(uint16_t &minutes);
-
    bool setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second = 0);
 
 private:
    RTC_DS3231 _rtc;
-   bool _isOk;
+   bool _isOk = false;
 };
-
-#endif

@@ -26,46 +26,42 @@ namespace
    {
       const uint8_t inactive = RELAY_ACTIVE_LOW ? HIGH : LOW;
       pinMode(PIN_RELAY_WATER_PUMP, OUTPUT);
-      pinMode(PIN_RELAY_MIST,       OUTPUT);
-      pinMode(PIN_RELAY_AIR_PUMP,   OUTPUT);
+      pinMode(PIN_RELAY_MIST, OUTPUT);
+      pinMode(PIN_RELAY_AIR_PUMP, OUTPUT);
       digitalWrite(PIN_RELAY_WATER_PUMP, inactive);
-      digitalWrite(PIN_RELAY_MIST,       inactive);
-      digitalWrite(PIN_RELAY_AIR_PUMP,   inactive);
+      digitalWrite(PIN_RELAY_MIST, inactive);
+      digitalWrite(PIN_RELAY_AIR_PUMP, inactive);
    }
 
    void initI2C()
    {
-      // ESP32-S3: SDA=8, SCL=9 (S3 Arduino default)
+      // ESP32-S3: SDA=8, SCL=9
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
    }
 
-   void initFileSystemAndSchedule(AirPumpSchedule &airSchedule)
+   // โหลด schedule จาก LittleFS → ISchedule
+   // ถ้าโหลดไม่สำเร็จ → schedule จะ disabled (clear() แล้ว setEnabled(false))
+   void initFileSystemAndSchedule(SystemContext &ctx)
    {
       if (!LittleFS.begin(true)) // true = format on fail (ช่วย first boot)
       {
-         Serial.println("⚠️ LittleFS mount failed, air schedule disabled");
-         airSchedule.enabled = false;
-         airSchedule.windowCount = 0;
+         Serial.println("⚠️ LittleFS mount failed, schedules disabled");
          return;
       }
 
-      Serial.println("✅ LittleFS mount success, loading air schedule...");
-      if (!loadAirScheduleFromFS("/schedule.json", airSchedule))
+      Serial.println("✅ LittleFS mount OK");
+
+      if (ctx.scheduledAirPump)
       {
-         Serial.println("⚠️ load schedule failed, no schedule");
-         airSchedule.enabled = false;
-         airSchedule.windowCount = 0;
-         return;
+         // ดึง ISchedule จาก ScheduledRelay ผ่าน getSchedule()
+         loadScheduleFromFS("/schedule.json", "air_pump",
+                            ctx.scheduledAirPump->getSchedule());
       }
-
-      Serial.printf("✅ air schedule loaded: enabled=%d windows=%u\n",
-                    airSchedule.enabled ? 1 : 0,
-                    (unsigned)airSchedule.windowCount);
    }
 
    void initModeSource(SystemContext &ctx)
    {
-      if (ctx.modeSource == nullptr)
+      if (!ctx.modeSource)
       {
          Serial.println("⚠️ modeSource is null (mode switch disabled)");
          return;
@@ -75,7 +71,7 @@ namespace
 
    void initNetModeSource(SystemContext &ctx)
    {
-      if (ctx.netModeSource == nullptr)
+      if (!ctx.netModeSource)
       {
          Serial.println("⚠️ netModeSource is null (net switch disabled)");
          return;
@@ -98,7 +94,7 @@ namespace
       if (ctx.ui)
          ctx.ui->begin();
 
-      // Actuators (relay begin() อ่าน flag RELAY_ACTIVE_LOW จาก Config.h)
+      // Actuators
       ctx.waterPump->begin();
       ctx.mistSystem->begin();
       ctx.airPump->begin();
@@ -118,7 +114,7 @@ namespace
       digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, LED_OFF);
    }
 
-   static void initNetwork(SystemContext &ctx)
+   void initNetwork(SystemContext &ctx)
    {
       if (!ctx.network)
       {
@@ -130,12 +126,11 @@ namespace
 
    void initClock(SystemContext &ctx)
    {
-      if (ctx.clock == nullptr)
+      if (!ctx.clock)
       {
          Serial.println("⚠️ clock is null (time disabled)");
          return;
       }
-
 #if DEBUG_TIME_LOG
       Serial.println("[BOOT] clock.begin() ...");
 #endif
@@ -151,11 +146,11 @@ namespace
    {
       // Core 1: task หนัก (sensor/control/webui)
       // Core 0: task เบา (network, command)
-      xTaskCreatePinnedToCore(inputTask,   "In",         INPUT_TASK_STACK,   &ctx, 1, nullptr, 1);
-      xTaskCreatePinnedToCore(controlTask, "Ctrl",       CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
-      xTaskCreatePinnedToCore(commandTask, "Cmd",        COMMAND_TASK_STACK, &ctx, 1, nullptr, 0);
-      xTaskCreatePinnedToCore(networkTask, "Net",        4096,               &ctx, 1, nullptr, 0);
-      xTaskCreatePinnedToCore(webUiTask,   "WebUiTask",  4096,               &ctx, 1, nullptr, 1);
+      xTaskCreatePinnedToCore(inputTask, "In", INPUT_TASK_STACK, &ctx, 1, nullptr, 1);
+      xTaskCreatePinnedToCore(controlTask, "Ctrl", CONTROL_TASK_STACK, &ctx, 2, nullptr, 1);
+      xTaskCreatePinnedToCore(commandTask, "Cmd", COMMAND_TASK_STACK, &ctx, 1, nullptr, 0);
+      xTaskCreatePinnedToCore(networkTask, "Net", 4096, &ctx, 1, nullptr, 0);
+      xTaskCreatePinnedToCore(webUiTask, "WebUiTask", 4096, &ctx, 1, nullptr, 1);
    }
 }
 
@@ -164,10 +159,10 @@ void AppBoot::setup(SystemContext &ctx)
    printBanner();
 
    // ⚠️ ลำดับสำคัญ: initRelayPins ต้องมาก่อน initDrivers และ startTasks เสมอ
-   initRelayPins();     // ← boot glitch guard: ต้อง set inactive ก่อน FreeRTOS
+   initRelayPins();
 
    initI2C();
-   initFileSystemAndSchedule(*ctx.airSchedule);
+   initFileSystemAndSchedule(ctx);
 
    initModeSource(ctx);
    initNetModeSource(ctx);

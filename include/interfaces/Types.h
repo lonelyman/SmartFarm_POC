@@ -1,38 +1,47 @@
 // include/interfaces/Types.h
-#ifndef TYPES_H
-#define TYPES_H
+#pragma once
 
 #include <cstdint>
 
-/**
- * @brief โหมดการทำงานของระบบ
- */
-enum class SystemMode
+// ============================================================
+//  Types.h — Domain Types ที่ใช้ร่วมกันทั้งระบบ
+//  ห้าม include Arduino API ในไฟล์นี้
+//  เพื่อให้ Domain / Application layer ทดสอบได้โดยไม่ต้องมี hardware
+// ============================================================
+
+// --- System Mode ---
+
+enum class SystemMode : uint8_t
 {
-    IDLE,  // พักเครื่อง ปลอดภัย ทุกรีเลย์ควรปิด
-    AUTO,  // สมองทำงานอัตโนมัติจากเซนเซอร์
-    MANUAL // คนคุมเอง สั่งรีเลย์ตรง ๆ
+    IDLE = 0,   // พักเครื่อง — ทุก relay ปิด ปลอดภัยสุด
+    AUTO = 1,   // ระบบตัดสินใจเองจากเซนเซอร์
+    MANUAL = 2, // คนสั่งตรงผ่าน manual switch / Serial / Web
 };
 
-/**
- * @brief รูปแบบข้อมูลมาตรฐานของเซนเซอร์ทุกตัวในระบบ
- */
+// --- Sensor Reading ---
+
 struct SensorReading
 {
-    float value;
-    bool isValid;
-    uint32_t timestamp;
+    float value = 0.0f;
+    bool isValid = false;
+    uint32_t timestamp = 0;
 
-    SensorReading() : value(0.0f), isValid(false), timestamp(0) {}
+    SensorReading() = default;
     SensorReading(float v, bool iv, uint32_t ts)
         : value(v), isValid(iv), timestamp(ts) {}
 };
 
+// --- Water Level ---
+
 struct WaterLevelSensors
 {
-    bool ch1Low = false;
-    bool ch2Low = false;
+    bool ch1Low = false; // true = น้ำต่ำกว่าระดับ CH1
+    bool ch2Low = false; // true = น้ำต่ำกว่าระดับ CH2
 };
+
+// --- Water Temperature (DS18B20) ---
+
+constexpr uint8_t MAX_WATER_TEMP_SENSORS = 4;
 
 struct WaterTempReading
 {
@@ -41,15 +50,12 @@ struct WaterTempReading
     char label[16] = "";
 };
 
-/**
- * @brief สถานะรวมของฟาร์ม (Single Source of Truth)
- */
+// --- System Status (Single Source of Truth ใน SharedState) ---
 
-constexpr uint8_t MAX_WATER_TEMP_SENSORS = 4;
 struct SystemStatus
 {
     SensorReading light;
-    SensorReading ec;
+    SensorReading ec; // reserved — ยังไม่ implement
     SensorReading temperature;
     SensorReading humidity;
     WaterLevelSensors waterLevelSensors;
@@ -57,40 +63,38 @@ struct SystemStatus
     WaterTempReading waterTemp[MAX_WATER_TEMP_SENSORS];
     uint8_t waterTempCount = 0;
 
-    bool isPumpActive = false;    // ปั๊มน้ำ
-    bool isMistActive = false;    // หมอก
-    bool isAirPumpActive = false; // ปั๊มลม
+    bool isPumpActive = false;
+    bool isMistActive = false;
+    bool isAirPumpActive = false;
 
-    // default ให้เครื่องอยู่ใน IDLE เพื่อความปลอดภัย
-    SystemMode mode = SystemMode::IDLE;
+    SystemMode mode = SystemMode::IDLE; // default IDLE — ปลอดภัยสุด
 };
 
-// ===================== เวลาใน 1 วัน (สำหรับใช้กับ DS3231) =====================
+// --- Time ---
+
 struct TimeOfDay
 {
-    uint8_t hour;   // 0-23
-    uint8_t minute; // 0-59
-    uint8_t second; // 0-59
+    uint8_t hour = 0;   // 0–23
+    uint8_t minute = 0; // 0–59
+    uint8_t second = 0; // 0–59
 
-    TimeOfDay() : hour(0), minute(0), second(0) {}
+    TimeOfDay() = default;
     TimeOfDay(uint8_t h, uint8_t m, uint8_t s)
         : hour(h), minute(m), second(s) {}
 };
 
-// helper: แปลงเป็น "นาทีของวัน" 0..1439
+// แปลง TimeOfDay → นาทีของวัน (0–1439)
 inline uint16_t toMinutesOfDay(const TimeOfDay &t)
 {
     return static_cast<uint16_t>(t.hour) * 60 + t.minute;
 }
 
-// ========== Manual override (สำหรับโหมด MANUAL) ==========
-// สั่งด้วยมือ: ความต้องการจากผู้ใช้ (Desired State)
+// --- Manual Overrides (MANUAL mode) ---
+
 struct ManualOverrides
 {
-    bool wantPumpOn = false; // อยากให้ปั๊มน้ำ ON?
-    bool wantMistOn = false; // อยากให้หมอก ON?
-    bool wantAirOn = false;  // อยากให้ปั๊มลม ON?
-    bool isUpdated = false;  // ยังไม่ใช้ตอนนี้ แต่เผื่ออนาคต
+    bool wantPumpOn = false;
+    bool wantMistOn = false;
+    bool wantAirOn = false;
+    bool isUpdated = false; // reserved — เผื่อ edge-trigger อนาคต
 };
-
-#endif

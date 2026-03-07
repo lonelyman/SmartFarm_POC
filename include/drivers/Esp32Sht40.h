@@ -1,53 +1,42 @@
 // include/drivers/Esp32Sht40.h
-#ifndef ESP32_SHT40_H
-#define ESP32_SHT40_H
+#pragma once
 
 #include <Arduino.h>
-#include "Adafruit_SHT4x.h"
+#include <Adafruit_SHT4x.h>
 #include "../interfaces/ISensor.h"
-#include "../interfaces/Types.h"
+
+// ============================================================
+//  Esp32Sht40
+//  Driver เซนเซอร์อุณหภูมิและความชื้น SHT40 ผ่าน I2C
+//
+//  วงจรต่อขา:
+//    [SHT40 VCC] ──── [3.3V]
+//    [SHT40 GND] ──── [GND]
+//    [SHT40 SDA](1) ──(1)[GPIO8 (SDA)](1.1)──(1.1)[R4.7kΩ](1.2)──(1.2)[3V3]
+//    [SHT40 SCL](2) ──(2)[GPIO9 (SCL)](2.1)──(2.1)[R4.7kΩ](2.2)──(2.2)[3V3]
+//
+//  ⚠️  R4.7kΩ ค่อมครั้งเดียวที่ bus — ไม่ต้องค่อมซ้ำถ้ามีหลาย device (BH1750, DS3231)
+//  ⚠️  Wire.begin() ต้องทำใน AppBoot เท่านั้น — driver นี้ไม่เรียก Wire.begin() เอง
+//
+//  read() คืนค่าอุณหภูมิเป็น SensorReading
+//  ความชื้นอ่านแยกผ่าน getLastHumidity() / isHumidityValid()
+// ============================================================
 
 class Esp32Sht40 : public ISensor
 {
 public:
-   Esp32Sht40(const char *name = "SHT40")
-       : _name(name), _lastHumidity(0.0f), _humidityValid(false) {}
+   explicit Esp32Sht40(const char *name = "SHT40");
 
-   bool begin() override
-   {
-      if (!_sht.begin())
-      {
-         Serial.printf("[SHT40] %s — ไม่พบอุปกรณ์บน I2C!\n", _name.c_str());
-         return false;
-      }
-      _sht.setPrecision(SHT4X_HIGH_PRECISION);
-      _sht.setHeater(SHT4X_NO_HEATER);
-      Serial.printf("[SHT40] %s — init OK\n", _name.c_str());
-      return true;
-   }
+   bool begin() override;
+   SensorReading read() override;
+   const char *getName() const override;
 
-   SensorReading read() override
-   {
-      sensors_event_t tempEvent, humEvent;
-      if (!_sht.getEvent(&humEvent, &tempEvent))
-      {
-         _humidityValid = false;
-         return SensorReading(0.0f, false, millis());
-      }
-      _lastHumidity = humEvent.relative_humidity;
-      _humidityValid = true;
-      return SensorReading(tempEvent.temperature, true, millis());
-   }
-
-   const char *getName() const override { return _name.c_str(); }
-   float getLastHumidity() const { return _lastHumidity; }
-   bool isHumidityValid() const { return _humidityValid; }
+   float getLastHumidity() const;
+   bool isHumidityValid() const;
 
 private:
    String _name;
    Adafruit_SHT4x _sht;
-   float _lastHumidity;
-   bool _humidityValid;
+   float _lastHumidity = 0.0f;
+   bool _humidityValid = false;
 };
-
-#endif

@@ -1,51 +1,36 @@
+// src/drivers/RtcDs3231Time.cpp
 #include <Arduino.h>
 #include "Config.h"
 #include "drivers/RtcDs3231Time.h"
 
-// ===================== Constructor =====================
-
 RtcDs3231Time::RtcDs3231Time()
-    : _isOk(false)
-{
-}
-
-// ===================== begin() =====================
+    : _isOk(false) {}
 
 bool RtcDs3231Time::begin()
 {
-   Serial.println("[RTC] begin() called");
-
-   bool ok = _rtc.begin();
-   Serial.printf("[RTC] _rtc.begin() => %d\n", ok ? 1 : 0);
-
-   if (!ok)
+   if (!_rtc.begin())
    {
-      Serial.println("⚠️ RTC DS3231: ไม่พบอุปกรณ์บน I2C");
+      Serial.println("⚠️ [RTC] ไม่พบ DS3231 บน I2C");
       _isOk = false;
       return false;
    }
 
    if (_rtc.lostPower())
    {
-      Serial.println("⚠️ RTC DS3231: เวลาเพิ่ง reset → ตั้งเวลาจากค่า compile");
-
-      // ใช้เวลาตอนคอมไพล์ตั้งให้ DS3231 ครั้งแรก
-      DateTime compiled(__DATE__, __TIME__);
-      _rtc.adjust(compiled);
+      // ไฟหาย / แบตหมด → ตั้งเวลาจากค่าตอน compile เป็น fallback
+      Serial.println("⚠️ [RTC] lostPower → ตั้งเวลาจาก compile time");
+      _rtc.adjust(DateTime(__DATE__, __TIME__));
    }
 
    _isOk = true;
-   Serial.println("✅ RTC DS3231: ready");
+   Serial.println("✅ [RTC] DS3231 ready");
    return true;
 }
-// ===================== isOk() =====================
 
 bool RtcDs3231Time::isOk() const
 {
    return _isOk;
 }
-
-// ===================== getTimeOfDay() =====================
 
 bool RtcDs3231Time::getTimeOfDay(TimeOfDay &out)
 {
@@ -57,31 +42,22 @@ bool RtcDs3231Time::getTimeOfDay(TimeOfDay &out)
       return false;
    }
 
-   DateTime now = _rtc.now();
-
+   const DateTime now = _rtc.now();
    out.hour = now.hour();
    out.minute = now.minute();
    out.second = now.second();
 
 #if DEBUG_TIME_LOG
-   Serial.printf("[RTC] %02u:%02u:%02u\n",
-                 (unsigned)out.hour,
-                 (unsigned)out.minute,
-                 (unsigned)out.second);
+   Serial.printf("[RTC] %02u:%02u:%02u\n", (unsigned)out.hour, (unsigned)out.minute, (unsigned)out.second);
 #endif
    return true;
 }
-
-// ===================== getMinutesOfDay() =====================
 
 bool RtcDs3231Time::getMinutesOfDay(uint16_t &minutes)
 {
    TimeOfDay t;
    if (!getTimeOfDay(t))
    {
-#if DEBUG_TIME_LOG
-      Serial.println("[RTC] getTimeOfDay failed, use 0");
-#endif
       minutes = 0;
       return false;
    }
@@ -89,7 +65,7 @@ bool RtcDs3231Time::getMinutesOfDay(uint16_t &minutes)
    minutes = toMinutesOfDay(t);
 
 #if DEBUG_TIME_LOG
-   Serial.printf("[RTC] minutesOfDay = %u\n", (unsigned)minutes);
+   Serial.printf("[RTC] minutesOfDay=%u\n", (unsigned)minutes);
 #endif
    return true;
 }
@@ -99,29 +75,17 @@ bool RtcDs3231Time::setTimeOfDay(uint8_t hour, uint8_t minute, uint8_t second)
    if (!_isOk)
    {
 #if DEBUG_TIME_LOG
-      Serial.println("[RTC] setTimeOfDay: RTC not initialized");
+      Serial.println("[RTC] setTimeOfDay: not initialized");
 #endif
       return false;
    }
 
-   // ใช้วันที่ dummy ไปก่อน เอาเวลาเป็นหลัก
-   // ปี/เดือน/วัน เลือกอะไรก็ได้ที่สมเหตุสมผล
-   DateTime now = _rtc.now();
-   DateTime target(
-       now.year(),  // ใช้ปีเดิม
-       now.month(), // ใช้เดือนเดิม
-       now.day(),   // ใช้วันเดิม
-       hour,
-       minute,
-       second);
-
-   _rtc.adjust(target);
+   // คง year/month/day เดิมไว้ — เปลี่ยนแค่เวลา
+   const DateTime now = _rtc.now();
+   _rtc.adjust(DateTime(now.year(), now.month(), now.day(), hour, minute, second));
 
 #if DEBUG_TIME_LOG
-   Serial.printf("[RTC] setTimeOfDay -> %02u:%02u:%02u\n",
-                 (unsigned)hour,
-                 (unsigned)minute,
-                 (unsigned)second);
+   Serial.printf("[RTC] setTimeOfDay → %02u:%02u:%02u\n", (unsigned)hour, (unsigned)minute, (unsigned)second);
 #endif
    return true;
 }
