@@ -1,7 +1,0 @@
-Test folder for PlatformIO Test Runner. Documentation is centralized in the root README.
-
-See: [README.md](../README.md)
-
-Use PlatformIO unit tests per: https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
-
-ตัวอย่างโค้ดทดสอบมี `test_farmmanager.cpp` ซึ่งตรวจ logic ของ FarmManager (hysteresis, schedule, mode transitions)
