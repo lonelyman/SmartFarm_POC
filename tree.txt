@@ -11,9 +11,13 @@
 ├── include
 │   ├── Config.h
 │   ├── application
+│   │   ├── CommandService.h
 │   │   ├── FarmManager.h
 │   │   ├── FarmModels.h
 │   │   └── ScheduledRelay.h
+│   ├── cli
+│   │   ├── CommandParser.h
+│   │   └── CommandTable.h
 │   ├── domain
 │   │   ├── TimeSchedule.h
 │   │   └── TimeWindow.h
@@ -54,9 +58,12 @@
 ├── platformio.ini
 ├── src
 │   ├── application
+│   │   ├── CommandService.cpp
 │   │   ├── FarmManager.cpp
 │   │   ├── ScheduledRelay.cpp
 │   │   └── WebUiTask.cpp
+│   ├── cli
+│   │   └── CommandParser.cpp
 │   ├── domain
 │   │   └── TimeSchedule.cpp
 │   ├── drivers
@@ -86,4 +93,4 @@
 │   └── test_farmmanager.cpp
 └── tree.txt
 
-18 directories, 69 files
+20 directories, 74 files
