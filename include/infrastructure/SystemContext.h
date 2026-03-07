@@ -1,3 +1,4 @@
+// include/infrastructure/SystemContext.h
 #pragma once
 
 // --- Infrastructure ---
@@ -10,9 +11,6 @@
 #include "interfaces/INetwork.h"
 #include "interfaces/IUi.h"
 
-// --- Domain ---
-#include "domain/AirPumpSchedule.h"
-
 // --- Drivers ---
 #include "drivers/Esp32Bh1750Light.h"
 #include "drivers/Esp32Ds18b20.h"
@@ -24,18 +22,19 @@
 
 // --- Application ---
 #include "application/FarmManager.h"
+#include "application/ScheduledRelay.h"
 
 // ============================================================
 //  SystemContext — Object Graph Holder
 //  สร้างใน main.cpp (Composition Root) และส่งเป็น pointer
 //  เข้า FreeRTOS tasks แทนการใช้ extern global
 // ============================================================
+
 struct SystemContext
 {
    // --- Core ---
    SharedState *state;
    IUi *ui;
-   AirPumpSchedule *airSchedule;
 
    // --- Sensors ---
    Esp32Bh1750Light *lightSensor;
@@ -61,4 +60,5 @@ struct SystemContext
 
    // --- Brain ---
    FarmManager *manager;
+   ScheduledRelay *scheduledAirPump; // air pump — ScheduledRelay เป็นเจ้าของ
 };

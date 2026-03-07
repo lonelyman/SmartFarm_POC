@@ -1,4 +1,5 @@
 // src/tasks/SensorTasks.cpp
+// src/tasks/SensorTasks.cpp
 
 #include <Arduino.h>
 
@@ -11,6 +12,7 @@
 
 #include "application/FarmManager.h"
 #include "application/FarmModels.h"
+#include "application/ScheduledRelay.h"
 
 // ============================================================
 //  Helpers
@@ -67,9 +69,10 @@ static void updateWaterLevelAlarmLeds(const WaterLevelSensors &wl)
 	const uint8_t LED_ON = ALARM_LED_ACTIVE_HIGH ? HIGH : LOW;
 	const uint8_t LED_OFF = ALARM_LED_ACTIVE_HIGH ? LOW : HIGH;
 
-	digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, wl.ch1Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
-
-	digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, wl.ch2Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
+	digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED,
+					 wl.ch1Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
+	digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED,
+					 wl.ch2Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
 }
 
 // ============================================================
@@ -98,7 +101,8 @@ void inputTask(void *pvParameters)
 
 		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
 		ctx->state->updateTemperature(t.value, t.isValid, now);
-		ctx->state->updateHumidity(ctx->tempSensor->getLastHumidity(), ctx->tempSensor->isHumidityValid(), now);
+		ctx->state->updateHumidity(ctx->tempSensor->getLastHumidity(),
+											ctx->tempSensor->isHumidityValid(), now);
 
 		// --- Water Temperature (DS18B20) ---
 		if (ctx->waterTempSensor && ctx->waterTempSensor->count() > 0)
@@ -137,7 +141,8 @@ void inputTask(void *pvParameters)
 			ctx->state->updateWaterLevelSensors(wl.ch1Low, wl.ch2Low, now);
 
 #if DEBUG_WATER_LEVEL_LOG
-			Serial.printf("[WLVL] ch1Low=%d ch2Low=%d\n", wl.ch1Low ? 1 : 0, wl.ch2Low ? 1 : 0);
+			Serial.printf("[WLVL] ch1Low=%d ch2Low=%d\n",
+							  wl.ch1Low ? 1 : 0, wl.ch2Low ? 1 : 0);
 #endif
 		}
 
@@ -145,7 +150,8 @@ void inputTask(void *pvParameters)
 		Serial.printf("[InputTask] lux=%.1f valid=%d\n", lux.value, lux.isValid ? 1 : 0);
 #endif
 #if DEBUG_TEMP_LOG
-		Serial.printf("[InputTask] temp=%.2f hum=%.1f valid=%d\n", t.value, ctx->tempSensor->getLastHumidity(), t.isValid ? 1 : 0);
+		Serial.printf("[InputTask] temp=%.2f hum=%.1f valid=%d\n",
+						  t.value, ctx->tempSensor->getLastHumidity(), t.isValid ? 1 : 0);
 #endif
 		vTaskDelay(pdMS_TO_TICKS(INPUT_TASK_INTERVAL_MS));
 	}
@@ -176,7 +182,8 @@ void controlTask(void *pvParameters)
 			if (ctx->state->consumeSetClockTime(req))
 			{
 				if (ctx->clock->setTimeOfDay(req.hour, req.minute, req.second))
-					Serial.printf("[CLOCK] time set: %02u:%02u:%02u\n", req.hour, req.minute, req.second);
+					Serial.printf("[CLOCK] time set: %02u:%02u:%02u\n",
+									  req.hour, req.minute, req.second);
 				else
 					Serial.println("[CLOCK] time set failed");
 			}
@@ -206,7 +213,11 @@ void controlTask(void *pvParameters)
 		updateModeFromSource(*ctx, status);
 
 #if DEBUG_CONTROL_LOG
-		Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n", (int)status.mode, ctx->waterPump->isOn() ? 1 : 0, ctx->mistSystem->isOn() ? 1 : 0, ctx->airPump->isOn() ? 1 : 0);
+		Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
+						  (int)status.mode,
+						  ctx->waterPump->isOn() ? 1 : 0,
+						  ctx->mistSystem->isOn() ? 1 : 0,
+						  ctx->airPump->isOn() ? 1 : 0);
 #endif
 
 		// 5) Map snapshot → FarmInput
@@ -219,16 +230,21 @@ void controlTask(void *pvParameters)
 		in.humidityRH = status.humidity.value;
 		in.humidityValid = status.humidity.isValid;
 
-		// 6) FarmManager ตัดสินใจ
+		// 6) FarmManager ตัดสินใจ (pump + mist เท่านั้น)
 		const FarmDecision decision = ctx->manager->update(in);
 
 		// 7) Apply decision → hardware
 		decision.pumpOn ? ctx->waterPump->turnOn() : ctx->waterPump->turnOff();
 		decision.mistOn ? ctx->mistSystem->turnOn() : ctx->mistSystem->turnOff();
-		decision.airOn ? ctx->airPump->turnOn() : ctx->airPump->turnOff();
 
-		// 8) Sync actuator state กลับ SharedState (ให้ WebUI / API อ่านได้)
-		ctx->state->updateActuators(ctx->waterPump->isOn(), ctx->mistSystem->isOn(), ctx->airPump->isOn());
+		// 8) Air pump — ScheduledRelay เป็นเจ้าของ ไม่ผ่าน FarmDecision
+		if (ctx->scheduledAirPump)
+			ctx->scheduledAirPump->update(minutesOfDay);
+
+		// 9) Sync actuator state กลับ SharedState (ให้ WebUI / API อ่านได้)
+		ctx->state->updateActuators(ctx->waterPump->isOn(),
+											 ctx->mistSystem->isOn(),
+											 ctx->airPump->isOn());
 
 		vTaskDelay(pdMS_TO_TICKS(CONTROL_TASK_INTERVAL_MS));
 	}

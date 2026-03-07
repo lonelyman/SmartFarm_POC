@@ -1,12 +1,14 @@
+// src/main.cpp
 #include <Arduino.h>
 
 #include "Config.h"
 
 // --- Domain ---
-#include "domain/AirPumpSchedule.h"
+#include "domain/TimeSchedule.h"
 
 // --- Application ---
 #include "application/FarmManager.h"
+#include "application/ScheduledRelay.h"
 
 // --- Drivers ---
 #include "drivers/Esp32Bh1750Light.h"
@@ -35,7 +37,6 @@
 
 // --- Core ---
 static SharedState state;
-static AirPumpSchedule airSchedule;
 
 // --- Sensors ---
 static Esp32Bh1750Light lightSensor("Main-Light");
@@ -65,7 +66,9 @@ static Esp32WebUi webUi; // inject ctx ผ่าน setContext() ใน setup()
                          // เพราะ webUi และ ctx ต้องการกันและกัน (circular)
 
 // --- Brain ---
-static FarmManager manager(&airSchedule);
+static FarmManager manager;
+static TimeSchedule airSchedule;                              // โหลดจาก JSON ใน AppBoot
+static ScheduledRelay scheduledAirPump(airPump, airSchedule); // air pump เป็นเจ้าของตาราง
 
 // --- System Context ---
 // field order ต้องตรงกับ struct SystemContext ใน SystemContext.h ทุกบรรทัด
@@ -73,7 +76,6 @@ static SystemContext ctx{
     // Core
     &state,
     nullptr, // ui — wire ใน setup() หลัง webUi พร้อม
-    &airSchedule,
 
     // Sensors
     &lightSensor,
@@ -99,6 +101,7 @@ static SystemContext ctx{
 
     // Brain
     &manager,
+    &scheduledAirPump,
 };
 
 // ============================================================

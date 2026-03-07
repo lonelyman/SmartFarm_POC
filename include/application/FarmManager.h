@@ -1,23 +1,32 @@
-#ifndef FARM_MANAGER_H
-#define FARM_MANAGER_H
+// include/application/FarmManager.h
+#pragma once
 
-#include "../domain/AirPumpSchedule.h"
-#include "FarmModels.h"
+#include "application/FarmModels.h"
+
+// ============================================================
+//  FarmManager — Brain ของระบบ
+//  ตัดสินใจเรื่อง water pump และ mist system เท่านั้น
+//
+//  Air pump ถูกแยกออกไปแล้ว — ScheduledRelay จัดการเอง
+//  ใน ControlTask: ctx->scheduledAirPump->update(minutesOfDay)
+//
+//  ใช้งาน:
+//    FarmDecision d = manager.update(in);
+//    d.pumpOn → water pump
+//    d.mistOn → mist system
+// ============================================================
 
 class FarmManager
 {
 public:
-    explicit FarmManager(const AirPumpSchedule *schedule);
+    FarmManager() = default;
 
     FarmDecision update(const FarmInput &in);
 
 private:
-    const AirPumpSchedule *_schedule = nullptr;
-
     // hysteresis latch
     bool _pumpLatched = false;
     bool _mistLatched = false;
-    bool _airLatched = false;
 
     // boot guard
     bool _bootGuardDone = false;
@@ -35,7 +44,4 @@ private:
     bool decideMistByHumidity(float humRH, bool valid);
     bool decideMistByTempAndHumidity(float tempC, float humRH);
     bool applyMistGuard(bool sensorWantsOn);
-    bool decideAirBySchedule(uint16_t minutesOfDay) const;
 };
-
-#endif

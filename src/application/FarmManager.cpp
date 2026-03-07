@@ -1,8 +1,7 @@
+// src/application/FarmManager.cpp
 #include "application/FarmManager.h"
+#include <Arduino.h>
 #include "Config.h"
-
-FarmManager::FarmManager(const AirPumpSchedule *schedule)
-    : _schedule(schedule) {}
 
 FarmDecision FarmManager::update(const FarmInput &in)
 {
@@ -11,14 +10,11 @@ FarmDecision FarmManager::update(const FarmInput &in)
    switch (in.mode)
    {
    case SystemMode::IDLE:
-      out.pumpOn = false;
-      out.mistOn = false;
-      out.airOn = false;
+      // ปิดทุกอย่าง + reset state ทั้งหมด
       _pumpLatched = false;
       _mistLatched = false;
-      _airLatched = false;
-      _mistForced = false;    // reset guard ตอน IDLE ด้วย
-      _bootGuardDone = false; // reset boot guard ถ้า IDLE (เผื่อ restart)
+      _mistForced = false;
+      _bootGuardDone = false;
       _bootTime = 0;
       break;
 
@@ -33,7 +29,6 @@ FarmDecision FarmManager::update(const FarmInput &in)
 
    _pumpLatched = out.pumpOn;
    _mistLatched = out.mistOn;
-   _airLatched = out.airOn;
 
    return out;
 }
@@ -43,7 +38,7 @@ FarmDecision FarmManager::applyManual(const ManualOverrides &m)
    FarmDecision out{};
    out.pumpOn = m.wantPumpOn;
    out.mistOn = m.wantMistOn;
-   out.airOn = m.wantAirOn;
+   // wantAirOn ไม่อยู่ใน FarmDecision — ControlTask ส่งต่อให้ ScheduledRelay เอง
    return out;
 }
 
@@ -51,7 +46,7 @@ FarmDecision FarmManager::applyAuto(const FarmInput &in)
 {
    FarmDecision out{};
 
-   // --- Boot guard: หน่วง 10 วินาทีหลัง boot ---
+   // --- Boot guard: หน่วง BOOT_GUARD_MS หลัง boot ---
    if (!_bootGuardDone)
    {
       if (_bootTime == 0)
@@ -62,10 +57,9 @@ FarmDecision FarmManager::applyAuto(const FarmInput &in)
       Serial.println("[FarmManager] Boot guard done, AUTO enabled");
    }
 
-   // --- Logic ปกติ ---
-   out.pumpOn = false;
-   out.airOn = decideAirBySchedule(in.minutesOfDay);
+   out.pumpOn = false; // water pump AUTO logic ยังไม่ implement
 
+   // --- Mist decision ---
    bool sensorWantsOn = false;
 
    if (in.temperatureValid && in.humidityValid)
@@ -75,20 +69,17 @@ FarmDecision FarmManager::applyAuto(const FarmInput &in)
    else
       sensorWantsOn = decideMistByTemp(in.temperatureC, in.temperatureValid);
 
-   // --- Time guard: จำกัดเวลาพ่น/พัก ---
    out.mistOn = applyMistGuard(sensorWantsOn);
 
    return out;
 }
 
-// ใช้ทั้ง temp และ humidity ตัดสินใจพร้อมกัน
 bool FarmManager::decideMistByTempAndHumidity(float tempC, float humRH)
 {
-   bool tooDry = humRH <= HYSTERESIS_HUMIDITY_ON;
-   bool tooHot = tempC >= HYSTERESIS_TEMP_ON;
-
-   bool coolEnough = tempC <= HYSTERESIS_TEMP_OFF;
-   bool humidEnough = humRH >= HYSTERESIS_HUMIDITY_OFF;
+   const bool tooDry = humRH <= HYSTERESIS_HUMIDITY_ON;
+   const bool tooHot = tempC >= HYSTERESIS_TEMP_ON;
+   const bool coolEnough = tempC <= HYSTERESIS_TEMP_OFF;
+   const bool humidEnough = humRH >= HYSTERESIS_HUMIDITY_OFF;
 
    if (tooDry && tooHot)
       return true;
@@ -97,7 +88,6 @@ bool FarmManager::decideMistByTempAndHumidity(float tempC, float humRH)
    return _mistLatched; // dead-band → คงเดิม
 }
 
-// fallback: humidity อย่างเดียว
 bool FarmManager::decideMistByHumidity(float humRH, bool valid)
 {
    if (!valid)
@@ -109,7 +99,6 @@ bool FarmManager::decideMistByHumidity(float humRH, bool valid)
    return _mistLatched;
 }
 
-// fallback: temp อย่างเดียว
 bool FarmManager::decideMistByTemp(float tempC, bool valid)
 {
    if (!valid)
@@ -121,10 +110,9 @@ bool FarmManager::decideMistByTemp(float tempC, bool valid)
    return _mistLatched;
 }
 
-// จำกัดเวลาพ่นต่อเนื่อง และบังคับพักขั้นต่ำ
 bool FarmManager::applyMistGuard(bool sensorWantsOn)
 {
-   uint32_t now = millis();
+   const uint32_t now = millis();
 
    // อยู่ใน forced-off → เช็คว่าพักครบยัง
    if (_mistForced)
@@ -134,17 +122,15 @@ bool FarmManager::applyMistGuard(bool sensorWantsOn)
          Serial.println("[MistGuard] Forced OFF (cooling down)");
          return false;
       }
-      _mistForced = false; // พักครบแล้ว
+      _mistForced = false;
       Serial.println("[MistGuard] Cooldown done, allow sensor");
    }
 
    if (sensorWantsOn)
    {
-      // บันทึกเวลาเริ่มพ่น (ครั้งแรกที่เปิด)
       if (!_mistLatched)
          _mistOnSince = now;
 
-      // พ่นนานเกินกำหนด → บังคับหยุด
       if (now - _mistOnSince >= MIST_MAX_ON_MS)
       {
          _mistForced = true;
@@ -155,19 +141,5 @@ bool FarmManager::applyMistGuard(bool sensorWantsOn)
       return true;
    }
 
-   return false;
-}
-
-bool FarmManager::decideAirBySchedule(uint16_t minutesOfDay) const
-{
-   if (!_schedule || !_schedule->enabled || _schedule->windowCount == 0)
-      return false;
-
-   for (uint8_t i = 0; i < _schedule->windowCount; ++i)
-   {
-      const TimeWindow &w = _schedule->windows[i];
-      if (minutesOfDay >= w.startMin && minutesOfDay < w.endMin)
-         return true;
-   }
    return false;
 }

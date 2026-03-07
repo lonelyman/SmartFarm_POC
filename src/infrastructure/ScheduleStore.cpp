@@ -1,10 +1,11 @@
+// src/infrastructure/ScheduleStore.cpp
 #include "infrastructure/ScheduleStore.h"
 
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
-// แปลง "HH:MM" -> นาทีของวัน (0..1439)
+// แปลง "HH:MM" → นาทีของวัน (0–1439)
 static bool parseTimeToMinutes(const char *str, uint16_t &minutes)
 {
    if (!str)
@@ -23,133 +24,97 @@ static bool parseTimeToMinutes(const char *str, uint16_t &minutes)
    return true;
 }
 
-bool loadAirScheduleFromFS(const char *path, AirPumpSchedule &out)
+bool loadScheduleFromFS(const char *path, const char *key, ISchedule &out)
 {
-   // เคลียร์ค่าเริ่มต้นก่อน
-   out.enabled = false;
-   out.windowCount = 0;
+   out.clear(); // เคลียร์ก่อนเสมอ — ป้องกัน stale data
 
-   // *** สมมติว่า LittleFS.begin() ถูกเรียกไปแล้วในที่อื่น (เช่น setup()) ***
+   // LittleFS.begin() ถูกเรียกแล้วใน AppBoot
    File f = LittleFS.open(path, "r");
    if (!f)
    {
-      Serial.printf("⚠️ schedule file '%s' not found\n", path);
+      Serial.printf("⚠️ [Schedule] file '%s' not found\n", path);
       return false;
    }
 
-   // ---------------- JSON Parse ด้วย JsonDocument (ArduinoJson v7) ----------------
-   JsonDocument doc; // ใช้ตัวใหม่ แทน StaticJsonDocument
+   JsonDocument doc;
    DeserializationError err = deserializeJson(doc, f);
    f.close();
 
    if (err)
    {
-      Serial.printf("⚠️ schedule JSON parse error: %s\n", err.c_str());
+      Serial.printf("⚠️ [Schedule] JSON parse error: %s\n", err.c_str());
       return false;
    }
 
-   // ---- DEBUG: แสดง JSON ที่อ่านได้จริงจาก LittleFS ----
-   Serial.println(F("----- Parsed schedule JSON (from FS) -----"));
-   serializeJsonPretty(doc, Serial);
-   Serial.println();
-   Serial.println(F("----- END Parsed JSON -----"));
-
-   // ---------------- ดึง object "air_pump" ----------------
-   JsonObject air = doc["air_pump"];
-   if (air.isNull())
+   // --- ดึง object ตาม key ที่ระบุ เช่น "air_pump" ---
+   JsonObject obj = doc[key];
+   if (obj.isNull())
    {
-      Serial.println(F("⚠️ schedule: 'air_pump' not found"));
+      Serial.printf("⚠️ [Schedule] key '%s' not found\n", key);
       return false;
    }
 
-   // enabled: ถ้าไม่มี key นี้ ให้ default = true
-   if (air["enabled"].is<bool>())
-   {
-      out.enabled = air["enabled"].as<bool>();
-   }
-   else
-   {
-      out.enabled = true;
-   }
+   const bool enabled = obj["enabled"].is<bool>() ? obj["enabled"].as<bool>() : true;
+   out.setEnabled(enabled);
 
-   // ---------------- ดึง array "windows" ----------------
-   JsonVariant windowsVar = air["windows"];
+   // --- windows array ---
+   JsonVariant windowsVar = obj["windows"];
    if (!windowsVar.is<JsonArray>())
    {
-      Serial.println(F("⚠️ schedule: 'windows' missing or not array"));
+      Serial.printf("⚠️ [Schedule] '%s.windows' missing or not array\n", key);
       return false;
    }
 
    JsonArray arr = windowsVar.as<JsonArray>();
    if (arr.isNull() || arr.size() == 0)
    {
-      Serial.println(F("⚠️ schedule: 'windows' is empty"));
+      Serial.printf("⚠️ [Schedule] '%s.windows' is empty\n", key);
       return false;
    }
 
-   // ---------------- วนลูปอ่านแต่ละ window ----------------
+   uint8_t loaded = 0;
    for (JsonVariant v : arr)
    {
       if (!v.is<JsonObject>())
       {
-         Serial.println(F("⚠️ schedule: window is not object, skip"));
+         Serial.println("⚠️ [Schedule] window is not object, skip");
          continue;
-      }
-
-      if (out.windowCount >= AirPumpSchedule::MAX_WINDOWS)
-      {
-         Serial.println(F("⚠️ schedule: exceed MAX_WINDOWS, ignore rest"));
-         break;
       }
 
       JsonObject win = v.as<JsonObject>();
 
-      // แทน containsKey() -> ใช้ is<T>() ตามที่ lib แนะนำ
-      JsonVariant startVar = win["start"];
-      JsonVariant endVar = win["end"];
-
-      if (!startVar.is<const char *>() || !endVar.is<const char *>())
+      if (!win["start"].is<const char *>() || !win["end"].is<const char *>())
       {
-         Serial.println(F("⚠️ schedule: 'start' or 'end' missing/not string, skip one window"));
+         Serial.println("⚠️ [Schedule] 'start' or 'end' missing, skip");
          continue;
       }
-
-      const char *startStr = startVar.as<const char *>();
-      const char *endStr = endVar.as<const char *>();
-
-      Serial.printf("DEBUG window: start='%s', end='%s'\n",
-                    startStr ? startStr : "NULL",
-                    endStr ? endStr : "NULL");
 
       uint16_t s = 0;
       uint16_t e = 0;
 
-      if (!parseTimeToMinutes(startStr, s) ||
-          !parseTimeToMinutes(endStr, e))
+      if (!parseTimeToMinutes(win["start"].as<const char *>(), s) ||
+          !parseTimeToMinutes(win["end"].as<const char *>(), e))
       {
-         Serial.println(F("⚠️ schedule: bad time format, skip one window"));
+         Serial.println("⚠️ [Schedule] bad time format, skip");
          continue;
       }
 
       if (s >= e)
       {
-         Serial.println(F("⚠️ schedule: start >= end, skip one window"));
+         Serial.println("⚠️ [Schedule] start >= end, skip");
          continue;
       }
 
-      TimeWindow &tw = out.windows[out.windowCount++];
-      tw.startMin = s;
-      tw.endMin = e;
+      out.addWindow(s, e);
+      loaded++;
    }
 
-   if (out.windowCount == 0)
+   if (loaded == 0)
    {
-      Serial.println(F("⚠️ schedule: no valid windows"));
+      Serial.printf("⚠️ [Schedule] '%s' no valid windows\n", key);
       return false;
    }
 
-   Serial.printf("✅ schedule loaded: %u window(s), enabled=%d\n",
-                 static_cast<unsigned>(out.windowCount),
-                 out.enabled ? 1 : 0);
+   Serial.printf("✅ [Schedule] '%s' loaded: %u window(s), enabled=%d\n", key, loaded, enabled ? 1 : 0);
    return true;
 }
