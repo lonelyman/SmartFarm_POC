@@ -1,5 +1,11 @@
-#ifndef I_UI_H
-#define I_UI_H
+// include/interfaces/IUi.h
+#pragma once
+
+// ============================================================
+//  IUi — Interface สำหรับ Web UI / Display layer
+//
+//  Implementation: Esp32WebUi (WebServer บน ESP32-S3)
+// ============================================================
 
 class IUi
 {
@@ -12,5 +18,3 @@ public:
    // เรียกถี่ๆ ใน task (ทำงาน 1 รอบ)
    virtual void tick() = 0;
 };
-
-#endif

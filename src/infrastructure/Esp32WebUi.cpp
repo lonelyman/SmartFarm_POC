@@ -1,13 +1,17 @@
 // src/infrastructure/Esp32WebUi.cpp
+#include "infrastructure/Esp32WebUi.h"
+
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <ESP.h>
+#include <ArduinoJson.h>
 
-#include "infrastructure/Esp32WebUi.h"
-#include "infrastructure/WifiConfigStore.h"
+// ============================================================
+//  Constructor / setContext
+// ============================================================
 
 Esp32WebUi::Esp32WebUi(uint16_t port)
-    : _ctx(nullptr), _server(port), _started(false)
+    : _server(port)
 {
 }
 
@@ -16,6 +20,10 @@ void Esp32WebUi::setContext(SystemContext *ctx)
    _ctx = ctx;
 }
 
+// ============================================================
+//  begin / tick
+// ============================================================
+
 bool Esp32WebUi::begin()
 {
    if (!_ctx)
@@ -23,20 +31,37 @@ bool Esp32WebUi::begin()
       Serial.println("❌ [WebUI] begin() called before setContext()");
       return false;
    }
+
+   // โหลด wifi config ครั้งเดียว — cache ไว้ใน _wifiCfg
+   WifiConfigStore store;
+   _wifiCfgLoaded = store.load(_wifiCfg) && _wifiCfg.isValid();
+
    registerRoutes();
-   Serial.println("ℹ️ WebUI: routes registered");
+   Serial.println("ℹ️ [WebUI] routes registered");
    return true;
 }
 
 void Esp32WebUi::tick()
 {
+   // restart ที่นี่ (หลัง handleClient ส่ง response เสร็จแล้ว)
+   if (_pendingRestart)
+   {
+      delay(200);
+      ESP.restart();
+   }
+
    if (!_started)
    {
       if (!ensureStartedWhenHasIp())
          return;
    }
+
    _server.handleClient();
 }
+
+// ============================================================
+//  Lazy start — เริ่ม server เมื่อมี IP พร้อมแล้ว
+// ============================================================
 
 bool Esp32WebUi::ensureStartedWhenHasIp()
 {
@@ -61,142 +86,164 @@ bool Esp32WebUi::ensureStartedWhenHasIp()
    Serial.printf("[WEB] UI ready: http://%s/\n", ip.toString().c_str());
 
    if (mode == WIFI_AP_STA && WiFi.status() == WL_CONNECTED)
-      Serial.printf("[WEB] STA IP: http://%s/\n", WiFi.localIP().toString().c_str());
+      Serial.printf("[WEB] STA IP:  http://%s/\n", WiFi.localIP().toString().c_str());
 
    return true;
 }
+
+// ============================================================
+//  JSON builders (ArduinoJson)
+// ============================================================
+
+String Esp32WebUi::buildStatusJson() const
+{
+   const auto snap = _ctx->state->getSnapshot();
+   const auto wifiMode = WiFi.getMode();
+   const bool staConn = (WiFi.status() == WL_CONNECTED);
+
+   char netMsg[96];
+   _ctx->state->getNetMessage(netMsg, sizeof(netMsg));
+
+   IPAddress apIp(0, 0, 0, 0);
+   if (wifiMode == WIFI_AP || wifiMode == WIFI_AP_STA)
+      apIp = WiFi.softAPIP();
+
+   IPAddress staIp(0, 0, 0, 0);
+   if (staConn)
+      staIp = WiFi.localIP();
+
+   JsonDocument doc;
+   doc["mode"] = (int)snap.mode;
+   doc["pump"] = snap.isPumpActive;
+   doc["mist"] = snap.isMistActive;
+   doc["air"] = snap.isAirPumpActive;
+   doc["lux"] = serialized(String(snap.light.value, 1));
+   doc["luxValid"] = snap.light.isValid;
+   doc["temp"] = serialized(String(snap.temperature.value, 2));
+   doc["tempValid"] = snap.temperature.isValid;
+   doc["hum"] = serialized(String(snap.humidity.value, 1));
+   doc["humValid"] = snap.humidity.isValid;
+   doc["wifiMode"] = (int)wifiMode;
+   doc["staConnected"] = staConn;
+   doc["apIp"] = apIp.toString();
+   doc["staIp"] = staIp.toString();
+   doc["netState"] = (int)_ctx->state->getNetState();
+   doc["netMsg"] = netMsg;
+
+   String out;
+   serializeJson(doc, out);
+   return out;
+}
+
+String Esp32WebUi::buildWifiConfigJson() const
+{
+   JsonDocument doc;
+   doc["hasConfig"] = _wifiCfgLoaded;
+   doc["ssid"] = _wifiCfgLoaded ? _wifiCfg.ssid.c_str() : "";
+   doc["hasPassword"] = _wifiCfgLoaded && _wifiCfg.password.length() > 0;
+   doc["hostname"] = _wifiCfgLoaded ? _wifiCfg.hostname.c_str() : "";
+
+   String out;
+   serializeJson(doc, out);
+   return out;
+}
+
+// ============================================================
+//  Helpers
+// ============================================================
 
 static void serveFileOr500(WebServer &srv, const char *path, const char *mime)
 {
    File f = LittleFS.open(path, "r");
    if (!f)
    {
-      String msg = String("file not found in LittleFS: ") + path;
-      srv.send(500, "text/plain; charset=utf-8", msg);
+      srv.send(500, "text/plain; charset=utf-8",
+               String("file not found: ") + path);
       return;
    }
    srv.streamFile(f, mime);
    f.close();
 }
 
+// ============================================================
+//  Routes
+// ============================================================
+
 void Esp32WebUi::registerRoutes()
 {
-   // Dashboard
+   // --- Static pages ---
+
    _server.on("/", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/dashboard.html", "text/html; charset=utf-8"); });
 
-   // WiFi setup page
    _server.on("/wifi", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi.html", "text/html; charset=utf-8"); });
 
-   // Saved page
    _server.on("/wifi-saved", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8"); });
 
-   // GET /api/wifi/config -> {hasConfig, ssid, hasPassword, hostname}
+   // --- GET /api/wifi/config → ใช้ cache จาก begin() ---
+
    _server.on("/api/wifi/config", HTTP_GET, [&]()
-              {
-      WifiConfigStore store("/wifi.json");
-      WifiConfig cfg;
-      bool ok = store.load(cfg) && cfg.isValid();
+              { _server.send(200, "application/json; charset=utf-8", buildWifiConfigJson()); });
 
-      String ssid = ok ? cfg.ssid : "";
-      String hn   = ok ? cfg.hostname : "";
+   // --- GET /api/status ---
 
-      bool hasPw = false;
-      if (ok) {
-         hasPw = (cfg.password.length() > 0);
-      }
-
-      String json = "{";
-      json += "\"hasConfig\":" + String(ok ? 1 : 0) + ",";
-      json += "\"ssid\":\"" + ssid + "\",";
-      json += "\"hasPassword\":" + String(hasPw ? 1 : 0) + ",";
-      json += "\"hostname\":\"" + hn + "\"";
-      json += "}";
-
-      _server.send(200, "application/json; charset=utf-8", json); });
-
-   // STATUS JSON
    _server.on("/api/status", HTTP_GET, [&]()
-              {
-      auto snap = _ctx->state->getSnapshot();
+              { _server.send(200, "application/json; charset=utf-8", buildStatusJson()); });
 
-      const wifi_mode_t mode = WiFi.getMode();
-      const bool staConnected = (WiFi.status() == WL_CONNECTED);
+   // --- Mode control ---
 
-      char netMsg[96];
-      _ctx->state->getNetMessage(netMsg, sizeof(netMsg));
-
-      IPAddress apIp(0, 0, 0, 0);
-      if (mode == WIFI_AP || mode == WIFI_AP_STA) apIp = WiFi.softAPIP();
-
-      IPAddress staIp(0, 0, 0, 0);
-      if (staConnected) staIp = WiFi.localIP();
-
-      String json = "{";
-      json += "\"mode\":" + String((int)snap.mode) + ",";
-
-      json += "\"pump\":" + String(snap.isPumpActive ? 1 : 0) + ",";
-      json += "\"mist\":" + String(snap.isMistActive ? 1 : 0) + ",";
-      json += "\"air\":"  + String(snap.isAirPumpActive ? 1 : 0) + ",";
-
-      json += "\"lux\":"  + String(snap.light.value, 1) + ",";
-      json += "\"luxValid\":" + String(snap.light.isValid ? 1 : 0) + ",";
-      json += "\"temp\":" + String(snap.temperature.value, 2) + ",";
-      json += "\"tempValid\":" + String(snap.temperature.isValid ? 1 : 0) + ",";
-      json += "\"hum\":"      + String(snap.humidity.value, 1) + ",";
-      json += "\"humValid\":" + String(snap.humidity.isValid ? 1 : 0) + ",";
-      json += "\"wifiMode\":" + String((int)mode) + ",";
-      json += "\"staConnected\":" + String(staConnected ? 1 : 0) + ",";
-      json += "\"apIp\":\"" + apIp.toString() + "\",";
-      json += "\"staIp\":\"" + staIp.toString() + "\",";
-      json += "\"netState\":" + String((int)_ctx->state->getNetState()) + ",";
-      json += "\"netMsg\":\"" + String(netMsg) + "\"";
-      json += "}";
-      _server.send(200, "application/json; charset=utf-8", json); });
-
-   // mode control
    _server.on("/api/mode/auto", HTTP_POST, [&]()
-              { _ctx->state->setMode(SystemMode::AUTO); _server.send(204); });
+              { _ctx->state->setMode(SystemMode::AUTO);   _server.send(204); });
    _server.on("/api/mode/manual", HTTP_POST, [&]()
               { _ctx->state->setMode(SystemMode::MANUAL); _server.send(204); });
    _server.on("/api/mode/idle", HTTP_POST, [&]()
-              { _ctx->state->setMode(SystemMode::IDLE); _server.send(204); });
+              { _ctx->state->setMode(SystemMode::IDLE);   _server.send(204); });
 
-   // network control
+   // --- Network control ---
+
    _server.on("/api/net/on", HTTP_POST, [&]()
-              { _ctx->state->requestNetOn(); _server.send(204); });
+              { _ctx->state->requestNetOn();   _server.send(204); });
    _server.on("/api/net/off", HTTP_POST, [&]()
-              { _ctx->state->requestNetOff(); _server.send(204); });
+              { _ctx->state->requestNetOff();  _server.send(204); });
    _server.on("/api/ntp", HTTP_POST, [&]()
               { _ctx->state->requestSyncNtp(); _server.send(204); });
 
-   // POST /save -> save /wifi.json -> show saved page -> reboot
+   // --- POST /save → บันทึก wifi.json แล้ว reboot ---
+
    _server.on("/save", HTTP_POST, [&]()
               {
-      String ssid = _server.arg("ssid");
-      String pass = _server.arg("password");
-      ssid.trim();
+      String ssid     = _server.arg("ssid");
+      String pass     = _server.arg("password");
+      String hostname = _server.arg("hostname");
 
-      if (ssid.length() == 0) {
+      ssid.trim();
+      hostname.trim();
+
+      if (ssid.length() == 0)
+      {
          _server.send(400, "text/plain; charset=utf-8", "SSID is required");
          return;
       }
 
-      WifiConfigStore store("/wifi.json");
+      WifiConfigStore store;
       WifiConfig cfg;
-      cfg.ssid = ssid;
+      cfg.ssid     = ssid;
       cfg.password = pass;
-      cfg.hostname = "smartfarm";
+      cfg.hostname = hostname.length() > 0 ? hostname : "smartfarm";
 
-      if (!store.save(cfg)) {
+      if (!store.save(cfg))
+      {
          _server.send(500, "text/plain; charset=utf-8", "Save failed");
          return;
       }
 
-      serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8");
+      // อัปเดต cache ด้วย เพื่อให้ /api/wifi/config สะท้อน config ใหม่ทันที
+      _wifiCfg       = cfg;
+      _wifiCfgLoaded = true;
 
-      delay(1200);
-      ESP.restart(); });
+      // ส่ง response ก่อน แล้ว restart ใน tick() (ไม่ block handler)
+      serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8");
+      _pendingRestart = true; });
 }
