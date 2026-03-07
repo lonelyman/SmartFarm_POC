@@ -38,21 +38,13 @@
 
 เพื่อรองรับหลายรุ่นโมดูล/การต่อวงจร โปรเจกต์มี flag ใน `include/Config.h` เพื่อ normalize พฤติกรรม (ห้าม hardcode ขั้วสัญญาณใน driver):
 
-- `RELAY_ACTIVE_LOW`
-   - `true` = IN=LOW → Relay ON
-   - `false` = IN=HIGH → Relay ON
-- `WATER_LEVEL_ALARM_LOW`
-   - `true` = LOW = alarm (น้ำต่ำ)
-   - `false` = HIGH = alarm (น้ำต่ำ)
-- `ALARM_LED_ACTIVE_HIGH`
-   - `true` = HIGH = LED on
-   - `false` = LOW = LED on
+- `RELAY_ACTIVE_LOW` — `true` = IN=LOW → Relay ON
+- `WATER_LEVEL_ALARM_LOW` — `true` = LOW = น้ำต่ำ (alarm)
+- `ALARM_LED_ACTIVE_HIGH` — `true` = HIGH = LED on
 
 ---
 
 ## 🧷 PIN Map (ESP32-S3 N16R8) — source of truth: `include/Config.h`
-
-### สรุปขาที่ใช้จริง
 
 | หมวด               | Signal             |                  GPIO |
 | ------------------ | ------------------ | --------------------: |
@@ -69,13 +61,9 @@
 
 ## 🪛 Wiring Notes
 
-### Switches (Manual / Mode / Net) — Active LOW
+### Switches — Active LOW + Pull-up
 
-สวิตช์ทุกตัวในโปรเจกต์นี้เป็น **toggle switch แบบบิด Active LOW**  
-ใช้ **external R10kΩ pull-up ร่วมกับ INPUT_PULLUP** ภายใน ESP32-S3 (~45kΩ) ต่อขนานกัน  
-เพื่อให้ทนต่อ noise ในตู้ควบคุม (relay / motor / pump)
-
-**วงจรต่อขา (ตัวอย่าง — ใช้เหมือนกันทุกตัว):**
+สวิตช์ทุกตัวใช้ **external R10kΩ pull-up ร่วมกับ INPUT_PULLUP** ภายใน ESP32-S3 (~45kΩ) ต่อขนานกัน
 
 ```
 (1)[3V3] ──(1)[R10kΩ](2)──(2)[GPIO]
@@ -83,103 +71,77 @@
                            (2)[ขา1 / ขา2](3)──(3)[GND]
 ```
 
-> จุด (2) คือจุดร่วมของ R10kΩ + GPIO + ขา 1 ของสวิตช์
-
-**BOM pull-up resistors:**
-
-| Switch      | GPIO | R     |
-| ----------- | ---- | ----- |
-| Manual Pump | 18   | R10kΩ |
-| Manual Mist | 5    | R10kΩ |
-| Manual Air  | 15   | R10kΩ |
-| Mode A      | 6    | R10kΩ |
-| Mode B      | 7    | R10kΩ |
-| Net Switch  | 39   | R10kΩ |
-
-รวม **R10kΩ 1/4W × 6 ตัว**
+**BOM pull-up resistors:** R10kΩ 1/4W × 6 ตัว (GPIO6, GPIO7, GPIO18, GPIO5, GPIO15, GPIO39)
 
 ---
 
-### Mode Switch — Rotary 3 ตำแหน่ง (4 ขา / 2 วงจรอิสระ)
+### Mode Switch — Rotary 3 ตำแหน่ง
 
-```
-ตำแหน่ง    GPIO6 (A)   GPIO7 (B)   Mode
-─────────────────────────────────────────
-บิดซ้าย    LOW         HIGH        AUTO
-กลาง       HIGH        HIGH        IDLE
-บิดขวา     HIGH        LOW         MANUAL
-```
+| ตำแหน่ง | GPIO6 (A) | GPIO7 (B) | Mode   |
+| ------- | --------- | --------- | ------ |
+| บิดซ้าย | LOW       | HIGH      | AUTO   |
+| กลาง    | HIGH      | HIGH      | IDLE   |
+| บิดขวา  | HIGH      | LOW       | MANUAL |
 
-ใช้คู่ขาซ้าย (A1/A2) กับ GPIO6 และคู่ขวา (B3/B4) กับ GPIO7
+### Net Switch — Toggle 2 ตำแหน่ง
 
----
+| ตำแหน่ง | GPIO39 | Mode          |
+| ------- | ------ | ------------- |
+| บิดซ้าย | HIGH   | AP_PRIMARY    |
+| บิดขวา  | LOW    | STA_PREFERRED |
 
-### Net Switch — Toggle 2 ตำแหน่ง (4 ขา / ใช้คู่ซ้ายเท่านั้น)
+### Manual Switches — Toggle 2 ตำแหน่ง
 
-```
-ตำแหน่ง    GPIO39      Mode
-────────────────────────────
-บิดซ้าย    HIGH        AP_PRIMARY
-บิดขวา     LOW         STA_PREFERRED
-```
-
-คู่ขวา (ขา 3-4) ไม่ต้องต่อ — ปล่อยว่าง
-
----
-
-### Manual Switches — Toggle 2 ตำแหน่ง (4 ขา / ใช้คู่ซ้ายเท่านั้น)
-
-```
-ตำแหน่ง    GPIO        isOn()
-────────────────────────────────
-บิดซ้าย    HIGH        false (OFF)
-บิดขวา     LOW         true  (ON)
-```
+| ตำแหน่ง | GPIO | isOn()      |
+| ------- | ---- | ----------- |
+| บิดซ้าย | HIGH | false (OFF) |
+| บิดขวา  | LOW  | true (ON)   |
 
 ---
 
 ### I2C (BH1750, SHT40, DS3231) — ต้องมี pull-up (บังคับ)
 
-- SDA=GPIO8, SCL=GPIO9
-- ต้องมี **external pull-up 4.7kΩ–10kΩ ไป 3.3V** ที่ทั้ง SDA และ SCL
-- ถ้าลืม pull-up: I2C scan มัก "ไม่เจอ device" แม้ต่อสายถูก
+```
+[DEVICE SDA](1) ──(1)[GPIO8 (SDA)](1.1)──(1.1)[R4.7kΩ](1.2)──(1.2)[3V3]
+[DEVICE SCL](2) ──(2)[GPIO9 (SCL)](2.1)──(2.1)[R4.7kΩ](2.2)──(2.2)[3V3]
+```
 
----
+**R4.7kΩ ค่อมครั้งเดียวที่ bus** — ไม่ต้องค่อมซ้ำถ้ามีหลาย device  
+**BOM:** R4.7kΩ 1/4W × 2 ตัว
 
 ### DS18B20 (1-Wire) — ต้องมี pull-up (บังคับ)
 
-- DATA=GPIO4
-- ต้องมี **external pull-up 4.7kΩ ไป 3.3V**
-- สายยาว/หลายตัว: ปรับช่วง 2.2k–4.7k ตามผลทดสอบจริง
+```
+[DS18B20 DATA](3)──(3)[GPIO4](3.1)──(3.1)[R4.7kΩ](3.2)──(3.2)[3V3]
+```
 
----
+สายยาว/หลายตัว: ปรับช่วง 2.2kΩ–4.7kΩ ตามผลทดสอบจริง
 
 ### Relay / SSR
 
 - ขา: Water=38, Mist=40, Air=41
 - ขั้ว ON/OFF ปรับได้ด้วย `RELAY_ACTIVE_LOW`
-- **Boot glitch warning:** ถ้า active-low และขา floating ตอนบูต รีเลย์อาจ ON ชั่วคราว  
-  → `AppBoot::initRelayPins()` set "INACTIVE" ให้ขารีเลย์ก่อนสร้าง FreeRTOS task เสมอ
+- **Boot glitch warning:** `AppBoot::initRelayPins()` set INACTIVE ก่อนสร้าง FreeRTOS task เสมอ
 
 ---
 
 ## 🔁 ตาราง PIN เปลี่ยน (ESP32 → ESP32-S3)
 
-| Signal                           | GPIO เดิม (ESP32) | GPIO ใหม่ (ESP32-S3) | เหตุผล                               |
-| -------------------------------- | ----------------: | -------------------: | ------------------------------------ |
-| `PIN_I2C_SDA`                    |                21 |                **8** | ย้ายให้เป็นคู่มาตรฐานกับ SCL         |
-| `PIN_I2C_SCL`                    |                22 |                **9** | GPIO22 ไม่มีบน S3                    |
-| `PIN_RELAY_WATER_PUMP`           |                25 |               **38** | GPIO25 ไม่มีบน S3                    |
-| `PIN_RELAY_MIST`                 |                26 |               **40** | อยู่ในกลุ่ม reserved 26–37           |
-| `PIN_RELAY_AIR_PUMP`             |                27 |               **41** | อยู่ในกลุ่ม reserved 26–37           |
-| `PIN_WATER_LEVEL_CH1_LOW_SENSOR` |                32 |                **1** | อยู่ในกลุ่ม reserved 26–37           |
-| `PIN_WATER_LEVEL_CH2_LOW_SENSOR` |                33 |                **2** | อยู่ในกลุ่ม reserved 26–37           |
-| `PIN_WATER_LEVEL_CH1_ALARM_LED`  |                23 |               **47** | GPIO23 ไม่มีบน S3                    |
-| `PIN_WATER_LEVEL_CH2_ALARM_LED`  |                19 |               **10** | ขาเดิมชน USB D−                      |
-| `PIN_SW_MODE_A`                  |                34 |                **6** | ย้ายจาก input-only มาเป็น I/O ทั่วไป |
-| `PIN_SW_MODE_B`                  |                35 |                **7** | เหตุผลเดียวกับ Mode A                |
-| `PIN_SW_NET`                     |                36 |               **39** | อยู่ในกลุ่ม reserved 26–37           |
-| `PIN_SW_FREE`                    |                39 |               **42** | ย้ายสำรองไปขาที่เป็น I/O ทั่วไป      |
+| Signal                           | GPIO เดิม | GPIO ใหม่ | เหตุผล                 |
+| -------------------------------- | --------: | --------: | ---------------------- |
+| `PIN_I2C_SDA`                    |        21 |     **8** | ย้ายให้เป็นคู่มาตรฐาน  |
+| `PIN_I2C_SCL`                    |        22 |     **9** | GPIO22 ไม่มีบน S3      |
+| `PIN_RELAY_WATER_PUMP`           |        25 |    **38** | GPIO25 ไม่มีบน S3      |
+| `PIN_RELAY_MIST`                 |        26 |    **40** | reserved 26–37         |
+| `PIN_RELAY_AIR_PUMP`             |        27 |    **41** | reserved 26–37         |
+| `PIN_WATER_LEVEL_CH1_LOW_SENSOR` |        32 |     **1** | reserved 26–37         |
+| `PIN_WATER_LEVEL_CH2_LOW_SENSOR` |        33 |     **2** | reserved 26–37         |
+| `PIN_WATER_LEVEL_CH1_ALARM_LED`  |        23 |    **47** | GPIO23 ไม่มีบน S3      |
+| `PIN_WATER_LEVEL_CH2_ALARM_LED`  |        19 |    **10** | ชน USB D−              |
+| `PIN_SW_MODE_A`                  |        34 |     **6** | ย้ายจาก input-only     |
+| `PIN_SW_MODE_B`                  |        35 |     **7** | ย้ายจาก input-only     |
+| `PIN_SW_NET`                     |        36 |    **39** | reserved 26–37         |
+| `PIN_SW_FREE`                    |        39 |    **42** | ย้ายสำรองไป I/O ทั่วไป |
 
 ---
 
@@ -199,8 +161,7 @@ pio run -t uploadfs
 pio device monitor
 ```
 
-> **ESP32-S3 USB CDC:** ครั้งแรกอาจต้องกด **BOOT + RESET** เพื่อเข้า Download Mode  
-> หรือเปิด "Erase Flash" ก่อน upload ครั้งแรก
+> **ESP32-S3 USB CDC:** ครั้งแรกอาจต้องกด **BOOT + RESET** เพื่อเข้า Download Mode
 
 ---
 
@@ -222,29 +183,41 @@ pio device monitor
 
 ## 💻 Serial Commands
 
-เชื่อมต่อ Serial Monitor ที่ 115200 baud แล้วพิมพ์คำสั่ง:
+| คำสั่ง            | ผล                              |
+| ----------------- | ------------------------------- |
+| `-auto` / `--a`   | mode → AUTO                     |
+| `-manual` / `--m` | mode → MANUAL                   |
+| `-idle` / `--i`   | mode → IDLE                     |
+| `-pump on/off`    | สั่ง pump (MANUAL เท่านั้น)     |
+| `-mist on/off`    | สั่ง mist (MANUAL เท่านั้น)     |
+| `-air on/off`     | สั่ง air pump (MANUAL เท่านั้น) |
+| `-clear`          | reset manual overrides          |
+| `-net on/off`     | เปิด/ปิด STA WiFi               |
+| `time=HH:MM[:SS]` | ตั้งเวลา RTC                    |
+| `-help`           | แสดงคำสั่งทั้งหมด               |
 
-| คำสั่ง               | ผล                              |
-| -------------------- | ------------------------------- |
-| `-auto` หรือ `--a`   | เปลี่ยน mode เป็น AUTO          |
-| `-manual` หรือ `--m` | เปลี่ยน mode เป็น MANUAL        |
-| `-idle` หรือ `--i`   | เปลี่ยน mode เป็น IDLE          |
-| `-pump on/off`       | สั่ง pump (MANUAL เท่านั้น)     |
-| `-mist on/off`       | สั่ง mist (MANUAL เท่านั้น)     |
-| `-air on/off`        | สั่ง air pump (MANUAL เท่านั้น) |
-| `-clear`             | reset manual overrides          |
-| `-net on/off`        | เปิด/ปิด STA WiFi               |
-| `time=HH:MM[:SS]`    | ตั้งเวลา RTC                    |
-| `-help`              | แสดงคำสั่งทั้งหมด               |
+---
+
+## 🗑️ ไฟล์ที่ควรลบออก (Obsolete)
+
+ไฟล์เหล่านี้ยังอยู่ในโปรเจคแต่ไม่มีใคร include หรือเรียกใช้แล้ว หลังจาก refactor Schedule เป็น `TimeSchedule` + `ScheduledRelay`:
+
+| ไฟล์                               | เหตุผล                                      |
+| ---------------------------------- | ------------------------------------------- |
+| `include/domain/AirPumpSchedule.h` | แทนด้วย `TimeSchedule` + `TimeWindow` แล้ว  |
+| `src/domain/AirPumpSchedule.cpp`   | มี `loadAirPumpSchedule()` ที่ไม่มีใครเรียก |
+
+> ⚠️ `test/test_farmmanager.cpp` ยังใช้ `AirPumpSchedule`, `FarmManager(&sched)`, และ `dec.airOn` ซึ่งถูกลบไปทั้งหมดแล้ว ต้องอัปเดต test ก่อนลบไฟล์เหล่านี้
 
 ---
 
 ## 🚧 สิ่งที่ยังไม่เสร็จ
 
-- [ ] Logic ปั๊มน้ำอัตโนมัติ (AUTO mode ยังไม่มี decision สำหรับ water pump)
-- [ ] EC / pH sensor integration (วางแผนไว้ในอนาคต)
+- [ ] **ลบ `AirPumpSchedule.h/.cpp`** หลังจากอัปเดต test แล้ว
+- [ ] **อัปเดต `test/test_farmmanager.cpp`** ให้ใช้ `TimeSchedule` และ `FarmManager()` ใหม่ (ไม่รับ schedule ใน constructor แล้ว)
+- [ ] Logic ปั๊มน้ำอัตโนมัติ (AUTO mode — `FarmManager.applyAuto()` ยัง `pumpOn = false` เสมอ)
+- [ ] EC / pH sensor integration
 - [ ] Web Dashboard: แสดง water temperature จาก DS18B20 ยังไม่ครบ
-- [ ] Unit test ครอบคลุมยังน้อย (มีแค่ `test_farmmanager.cpp`)
 - [ ] OTA Update
 - [ ] Data logging / export ข้อมูลเซนเซอร์ย้อนหลัง
 
@@ -255,33 +228,76 @@ pio device monitor
 ```
 SmartFarm_POC/
 ├── include/
-│   ├── Config.h                  ← PIN map + ค่าคงที่ทั้งหมด (source of truth)
-│   ├── interfaces/               ← ISensor, IActuator, IClock, IModeSource, Types
-│   ├── domain/                   ← AirPumpSchedule, FarmModels
-│   ├── application/              ← FarmManager (brain)
-│   ├── infrastructure/           ← SharedState, SystemContext, AppBoot
-│   ├── drivers/                  ← BH1750, SHT40, DS3231, Relay, Switch
-│   └── tasks/                    ← Task entry points
-├── src/
-│   ├── main.cpp                  ← Composition Root
-│   ├── drivers/
-│   ├── tasks/                    ← inputTask, controlTask, commandTask, networkTask, webUiTask
+│   ├── Config.h                        ← PIN map + ค่าคงที่ทั้งหมด (source of truth)
+│   ├── interfaces/
+│   │   ├── Types.h                     ← Domain types (SystemMode, SensorReading, ...)
+│   │   ├── IActuator.h
+│   │   ├── IClock.h
+│   │   ├── IModeSource.h
+│   │   ├── INetModeSource.h
+│   │   ├── INetwork.h
+│   │   ├── ISchedule.h                 ← interface ตารางเวลา (generic)
+│   │   ├── ISensor.h
+│   │   └── IUi.h
+│   ├── domain/
+│   │   ├── TimeWindow.h                ← struct ช่วงเวลา [start, end)
+│   │   ├── TimeSchedule.h              ← pure logic ตารางเวลา ไม่มี Arduino
+│   │   └── AirPumpSchedule.h           ← ⚠️ OBSOLETE — ลบได้
 │   ├── application/
+│   │   ├── FarmModels.h                ← FarmInput / FarmDecision
+│   │   ├── FarmManager.h               ← brain: ตัดสินใจ pump + mist เท่านั้น
+│   │   └── ScheduledRelay.h            ← เชื่อม ISchedule + IActuator
 │   ├── infrastructure/
-│   └── domain/
+│   │   ├── SystemContext.h             ← Object graph holder
+│   │   ├── SharedState.h               ← Thread-safe state (FreeRTOS mutex)
+│   │   ├── AppBoot.h
+│   │   ├── RtcClock.h
+│   │   ├── ScheduleStore.h             ← โหลด JSON → ISchedule
+│   │   ├── Esp32ModeSwitchSource.h
+│   │   ├── Esp32WebUi.h
+│   │   ├── Esp32WiFiNetwork.h
+│   │   ├── NetTimeSync.h
+│   │   └── WifiConfigStore.h
+│   ├── drivers/
+│   │   ├── Esp32Bh1750Light.h
+│   │   ├── Esp32Sht40.h
+│   │   ├── Esp32Ds18b20.h
+│   │   ├── Esp32WaterLevelInput.h
+│   │   ├── Esp32Relay.h
+│   │   ├── Esp32ManualSwitch.h
+│   │   ├── Esp32NetModeSwitch.h
+│   │   └── RtcDs3231Time.h
+│   └── tasks/
+│       ├── TaskEntrypoints.h
+│       └── WebUiTask.h
+├── src/
+│   ├── main.cpp                        ← Composition Root
+│   ├── domain/
+│   │   ├── TimeSchedule.cpp
+│   │   └── AirPumpSchedule.cpp         ← ⚠️ OBSOLETE — ลบได้
+│   ├── application/
+│   │   ├── FarmManager.cpp
+│   │   ├── ScheduledRelay.cpp
+│   │   └── WebUiTask.cpp
+│   ├── drivers/
+│   ├── infrastructure/
+│   │   ├── AppBoot.cpp
+│   │   ├── ScheduleStore.cpp
+│   │   └── ...
+│   └── tasks/
+│       ├── SensorTasks.cpp             ← inputTask + controlTask
+│       ├── NetworkTask.cpp
+│       └── CommandTask.cpp
 ├── data/
-│   ├── schedule.json             ← ตารางเวลาปั๊มลม (LittleFS)
-│   └── www/                      ← Web UI (dashboard, wifi)
-├── test/
-│   └── test_farmmanager.cpp
-└── platformio.ini
+│   ├── schedule.json                   ← ตารางเวลา (LittleFS)
+│   └── www/                            ← Web UI
+└── test/
+    └── test_farmmanager.cpp            ← ⚠️ ต้องอัปเดต (ใช้ API เก่า)
 ```
 
 ---
 
 ## 🏗️ สถาปัตยกรรม (Clean Architecture 6 Layer)
-
-เป้าหมาย: **แยก business logic ออกจากฮาร์ดแวร์** — พอร์ตง่าย ทดสอบได้
 
 ```
 ┌─────────────────────────────────────┐
@@ -291,39 +307,64 @@ SmartFarm_POC/
 ├─────────────────────────────────────┤
 │  Drivers (Hardware Adapters)        │  ← BH1750, SHT40, Relay, Switch
 ├─────────────────────────────────────┤
-│  Application (FarmManager)          │  ← ตัดสินใจ business logic
+│  Application                        │
+│    FarmManager   — pump + mist      │  ← sensor-based hysteresis
+│    ScheduledRelay — air pump        │  ← time-based schedule
 ├─────────────────────────────────────┤
-│  Domain (Models, Schedule)          │  ← AirPumpSchedule, FarmInput
+│  Domain (TimeSchedule, TimeWindow)  │  ← pure logic ไม่มี Arduino
 ├─────────────────────────────────────┤
-│  Interfaces (Contracts)             │  ← ISensor, IActuator, IClock
+│  Interfaces (Contracts)             │  ← ISensor, IActuator, ISchedule
 └─────────────────────────────────────┘
 ```
 
 **กฎสำคัญ:**
 
-- เลเยอร์ล่าง (Interfaces / Domain / Application) **ห้ามแตะ Arduino API**
+- Domain layer **ห้ามแตะ Arduino API** — ทดสอบได้โดยไม่ต้องมี hardware
 - Relay สั่งได้เฉพาะใน `controlTask` เท่านั้น
 - คำสั่งจาก Serial / Web ต้องผ่าน `SharedState` เสมอ (thread-safe)
+- Air pump ควบคุมโดย `ScheduledRelay` — ไม่ผ่าน `FarmDecision` อีกต่อไป
 
 ---
 
-## ✅ สถานะการ Review Code (อ้างอิง SystemContext)
+## ✅ สถานะการ Review Code
 
-| Field ใน SystemContext                      | ไฟล์                                                                     |                 สถานะ                 |
-| ------------------------------------------- | ------------------------------------------------------------------------ | :-----------------------------------: |
-| `state` — SharedState                       | `SharedState.h/.cpp`                                                     |           ยังไม่ได้ review            |
-| `ui` — IUi / Esp32WebUi                     | `Esp32WebUi.h/.cpp`                                                      |              ✅ reviewed              |
-| `airSchedule` — AirPumpSchedule             | `AirPumpSchedule.h/.cpp`                                                 |           ยังไม่ได้ review            |
-| `lightSensor` — Esp32Bh1750Light            | `Esp32Bh1750Light.h/.cpp`                                                |           ยังไม่ได้ review            |
-| `tempSensor` — Esp32Sht40                   | `Esp32Sht40.h/.cpp`                                                      |           ยังไม่ได้ review            |
-| `waterLevelInput` — Esp32WaterLevelInput    | `Esp32WaterLevelInput.h`                                                 |           ยังไม่ได้ review            |
-| `waterTempSensor` — Esp32Ds18b20            | `Esp32Ds18b20.h/.cpp`                                                    |           ยังไม่ได้ review            |
-| `waterPump/mistSystem/airPump` — Esp32Relay | `Esp32Relay.h/.cpp`                                                      |           ยังไม่ได้ review            |
-| `swManualPump/Mist/Air` — Esp32ManualSwitch | `Esp32ManualSwitch.h/.cpp`                                               |              ✅ reviewed              |
-| `modeSource` — Esp32ModeSwitchSource        | `Esp32ModeSwitchSource.h/.cpp`                                           |              ✅ reviewed              |
-| `netModeSource` — Esp32NetModeSwitch        | `Esp32NetModeSwitch.h/.cpp`                                              |              ✅ reviewed              |
-| `clock` — RtcClock / RtcDs3231Time          | `RtcClock.h`, `RtcDs3231Time.h/.cpp`                                     |           ยังไม่ได้ review            |
-| `network` — Esp32WiFiNetwork                | `Esp32WiFiNetwork.h/.cpp`                                                |           ยังไม่ได้ review            |
-| `manager` — FarmManager                     | `FarmManager.h/.cpp`                                                     |           ยังไม่ได้ review            |
-| Tasks                                       | `SensorTasks.cpp`, `NetworkTask.cpp`, `CommandTask.cpp`, `WebUiTask.cpp` | ✅ reviewed (SensorTasks) / ยังไม่ครบ |
-| Infrastructure                              | `AppBoot.cpp`, `SystemContext.h`, `main.cpp`                             |              ✅ reviewed              |
+| ไฟล์                                     |     สถานะ     |
+| ---------------------------------------- | :-----------: |
+| `interfaces/Types.h`                     |      ✅       |
+| `interfaces/IActuator.h`                 |      ✅       |
+| `interfaces/ISensor.h`                   |      ✅       |
+| `interfaces/IClock.h`                    |      ✅       |
+| `interfaces/IModeSource.h`               |      ✅       |
+| `interfaces/INetModeSource.h`            |      ✅       |
+| `interfaces/ISchedule.h`                 |      ✅       |
+| `interfaces/INetwork.h`                  |      ⏳       |
+| `interfaces/IUi.h`                       |      ⏳       |
+| `domain/TimeWindow.h`                    |      ✅       |
+| `domain/TimeSchedule.h/.cpp`             |      ✅       |
+| `domain/AirPumpSchedule.h/.cpp`          |  🗑️ obsolete  |
+| `application/FarmModels.h`               |      ✅       |
+| `application/FarmManager.h/.cpp`         |      ✅       |
+| `application/ScheduledRelay.h/.cpp`      |      ✅       |
+| `drivers/Esp32Relay.h/.cpp`              |      ✅       |
+| `drivers/Esp32ManualSwitch.h/.cpp`       |      ✅       |
+| `drivers/Esp32NetModeSwitch.h/.cpp`      |      ✅       |
+| `drivers/Esp32ModeSwitchSource.h/.cpp`   |      ✅       |
+| `drivers/Esp32Bh1750Light.h/.cpp`        |      ✅       |
+| `drivers/Esp32Sht40.h/.cpp`              |      ✅       |
+| `drivers/Esp32Ds18b20.h/.cpp`            |      ✅       |
+| `drivers/Esp32WaterLevelInput.h`         |      ✅       |
+| `drivers/RtcDs3231Time.h/.cpp`           |      ✅       |
+| `infrastructure/RtcClock.h/.cpp`         |      ✅       |
+| `infrastructure/SystemContext.h`         |      ✅       |
+| `infrastructure/AppBoot.h/.cpp`          |      ✅       |
+| `infrastructure/ScheduleStore.h/.cpp`    |      ✅       |
+| `infrastructure/SharedState.h/.cpp`      |      ⏳       |
+| `infrastructure/Esp32WebUi.h/.cpp`       |      ⏳       |
+| `infrastructure/Esp32WiFiNetwork.h/.cpp` |      ⏳       |
+| `infrastructure/NetTimeSync.h/.cpp`      |      ⏳       |
+| `infrastructure/WifiConfigStore.h/.cpp`  |      ⏳       |
+| `tasks/SensorTasks.cpp`                  |      ✅       |
+| `tasks/NetworkTask.cpp`                  |      ⏳       |
+| `tasks/CommandTask.cpp`                  |      ⏳       |
+| `src/main.cpp`                           |      ✅       |
+| `test/test_farmmanager.cpp`              | ⚠️ ต้องอัปเดต |
