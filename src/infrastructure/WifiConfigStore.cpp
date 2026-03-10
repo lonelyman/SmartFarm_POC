@@ -15,13 +15,10 @@ static String getStringOrEmpty(JsonVariantConst v)
    return String();
 }
 
-// ESP32 Arduino ไม่ expose isMounted() ตรงๆ
-// ใช้ exists("/") เป็น idiom ตรวจ mount — root path ต้องมีเสมอถ้า mount สำเร็จ
 static bool isMounted()
 {
    if (LittleFS.exists("/"))
       return true;
-
    Serial.println("⚠️ [WiFiCFG] LittleFS not mounted — call LittleFS.begin() in AppBoot");
    return false;
 }
@@ -61,12 +58,17 @@ bool WifiConfigStore::load(WifiConfig &out)
    out.ssid = getStringOrEmpty(doc["ssid"]);
    out.password = getStringOrEmpty(doc["password"]);
    out.hostname = getStringOrEmpty(doc["hostname"]);
+   out.apSsid = getStringOrEmpty(doc["apSsid"]);
+   out.apPass = getStringOrEmpty(doc["apPass"]);
 
    if (out.hostname.length() == 0)
       out.hostname = "smartfarm";
 
-   // ไม่ log password
-   Serial.printf("✅ [WiFiCFG] loaded: ssid='%s' hostname='%s'\n", out.ssid.c_str(), out.hostname.c_str());
+   if (out.apSsid.length() == 0)
+      out.apSsid = "SmartFarm-Setup";
+
+   Serial.printf("✅ [WiFiCFG] loaded: ssid='%s' hostname='%s' apSsid='%s'\n",
+                 out.ssid.c_str(), out.hostname.c_str(), out.apSsid.c_str());
    return true;
 }
 
@@ -90,6 +92,8 @@ bool WifiConfigStore::save(const WifiConfig &cfg)
    doc["ssid"] = cfg.ssid;
    doc["password"] = cfg.password;
    doc["hostname"] = cfg.hostname.length() > 0 ? cfg.hostname : "smartfarm";
+   doc["apSsid"] = cfg.apSsid.length() > 0 ? cfg.apSsid : "SmartFarm-Setup";
+   doc["apPass"] = cfg.apPass;
 
    if (serializeJsonPretty(doc, f) == 0)
    {

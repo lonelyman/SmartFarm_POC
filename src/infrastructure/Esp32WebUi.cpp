@@ -60,7 +60,7 @@ void Esp32WebUi::tick()
 }
 
 // ============================================================
-//  Lazy start — เริ่ม server เมื่อมี IP พร้อมแล้ว
+//  Lazy start
 // ============================================================
 
 bool Esp32WebUi::ensureStartedWhenHasIp()
@@ -92,7 +92,7 @@ bool Esp32WebUi::ensureStartedWhenHasIp()
 }
 
 // ============================================================
-//  JSON builders (ArduinoJson)
+//  JSON builders
 // ============================================================
 
 String Esp32WebUi::buildStatusJson() const
@@ -142,6 +142,8 @@ String Esp32WebUi::buildWifiConfigJson() const
    doc["ssid"] = _wifiCfgLoaded ? _wifiCfg.ssid.c_str() : "";
    doc["hasPassword"] = _wifiCfgLoaded && _wifiCfg.password.length() > 0;
    doc["hostname"] = _wifiCfgLoaded ? _wifiCfg.hostname.c_str() : "";
+   doc["apSsid"] = _wifiCfgLoaded ? _wifiCfg.apSsid.c_str() : "";
+   doc["hasApPass"] = _wifiCfgLoaded && _wifiCfg.apPass.length() >= 8;
 
    String out;
    serializeJson(doc, out);
@@ -182,7 +184,7 @@ void Esp32WebUi::registerRoutes()
    _server.on("/wifi-saved", HTTP_GET, [&]()
               { serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8"); });
 
-   // --- GET /api/wifi/config → ใช้ cache จาก begin() ---
+   // --- GET /api/wifi/config ---
 
    _server.on("/api/wifi/config", HTTP_GET, [&]()
               { _server.send(200, "application/json; charset=utf-8", buildWifiConfigJson()); });
@@ -217,9 +219,12 @@ void Esp32WebUi::registerRoutes()
       String ssid     = _server.arg("ssid");
       String pass     = _server.arg("password");
       String hostname = _server.arg("hostname");
+      String apSsid   = _server.arg("apSsid");
+      String apPass   = _server.arg("apPass");
 
       ssid.trim();
       hostname.trim();
+      apSsid.trim();
 
       if (ssid.length() == 0)
       {
@@ -232,6 +237,19 @@ void Esp32WebUi::registerRoutes()
       cfg.ssid     = ssid;
       cfg.password = pass;
       cfg.hostname = hostname.length() > 0 ? hostname : "smartfarm";
+      cfg.apSsid   = apSsid.length()   > 0 ? apSsid   : "SmartFarm-Setup";
+      cfg.apPass   = apPass;
+
+      // ถ้า password field ว่าง → ใช้ค่าเดิมจาก store (ผู้ใช้ไม่ได้ตั้งใจเปลี่ยน)
+      if (cfg.password.length() == 0 || cfg.apPass.length() == 0)
+      {
+         WifiConfig old;
+         if (store.load(old))
+         {
+            if (cfg.password.length() == 0) cfg.password = old.password;
+            if (cfg.apPass.length()   == 0) cfg.apPass   = old.apPass;
+         }
+      }
 
       if (!store.save(cfg))
       {
@@ -239,11 +257,10 @@ void Esp32WebUi::registerRoutes()
          return;
       }
 
-      // อัปเดต cache ด้วย เพื่อให้ /api/wifi/config สะท้อน config ใหม่ทันที
+      // อัปเดต cache ทันที
       _wifiCfg       = cfg;
       _wifiCfgLoaded = true;
 
-      // ส่ง response ก่อน แล้ว restart ใน tick() (ไม่ block handler)
       serveFileOr500(_server, "/www/wifi-saved.html", "text/html; charset=utf-8");
       _pendingRestart = true; });
 }
