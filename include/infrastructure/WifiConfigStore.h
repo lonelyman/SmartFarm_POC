@@ -12,10 +12,14 @@
 //    {
 //      "ssid":     "MyNetwork",
 //      "password": "secret",
-//      "hostname": "smartfarm"
+//      "hostname": "smartfarm",
+//      "apSsid":   "SmartFarm-Mine",
+//      "apPass":   "12345678"
 //    }
 //
-//  hostname: ถ้าไม่มีใน JSON จะ default เป็น "smartfarm"
+//  hostname: default "smartfarm" ถ้าไม่มี
+//  apSsid:   default "SmartFarm-Setup" ถ้าไม่มี
+//  apPass:   default "" (open AP) ถ้าไม่มี
 // ============================================================
 
 struct WifiConfig
@@ -23,6 +27,8 @@ struct WifiConfig
    String ssid;
    String password;
    String hostname;
+   String apSsid;
+   String apPass;
 
    bool isValid() const { return ssid.length() > 0; }
 };

@@ -13,8 +13,6 @@
             --line: rgba(255, 255, 255, 0.12);
             --accent: #4cc9f0;
             --accent2: #7c3aed;
-            --danger: #ff5a7a;
-            --ok: #22c55e;
             --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
             --radius: 18px;
          }
@@ -103,38 +101,6 @@
             font-size: 12.5px;
             line-height: 1.4;
          }
-         form {
-            padding: 16px;
-         }
-         label {
-            display: block;
-            font-size: 13px;
-            color: var(--muted);
-            margin: 10px 0 6px;
-         }
-         .field {
-            width: 100%;
-            padding: 12px 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 12px;
-            color: var(--text);
-            outline: none;
-         }
-         .field:focus {
-            border-color: rgba(76, 201, 240, 0.65);
-            box-shadow: 0 0 0 4px rgba(76, 201, 240, 0.18);
-         }
-
-         .row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-         }
-         .row .grow {
-            flex: 1;
-         }
-
          .pill {
             display: inline-block;
             margin-top: 10px;
@@ -147,32 +113,34 @@
             line-height: 1;
          }
 
-         .btn {
-            width: 100%;
-            margin-top: 14px;
-            padding: 12px 14px;
-            border: 0;
-            border-radius: 14px;
-            font-weight: 700;
-            cursor: pointer;
-            color: #071022;
-            background: linear-gradient(135deg, var(--accent), #9be7ff);
-            box-shadow: 0 12px 26px rgba(76, 201, 240, 0.25);
+         form {
+            padding: 16px;
          }
-         .btn:active {
-            transform: translateY(1px);
-         }
-         .sub {
-            margin-top: 10px;
-            font-size: 12px;
+         label {
+            display: block;
+            font-size: 13px;
             color: var(--muted);
-            line-height: 1.45;
+            margin: 10px 0 6px;
+         }
+         .field {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            color: var(--text);
+            outline: none;
+            font-size: 14px;
+         }
+         .field:focus {
+            border-color: rgba(76, 201, 240, 0.65);
+            box-shadow: 0 0 0 4px rgba(76, 201, 240, 0.18);
          }
          .toggle {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-top: 10px;
+            margin-top: 8px;
             color: var(--muted);
             font-size: 12.5px;
             user-select: none;
@@ -181,6 +149,46 @@
             width: 16px;
             height: 16px;
          }
+
+         /* ── Advanced collapsible ── */
+         .advanced-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 10px 0;
+            background: none;
+            border: none;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 14px;
+         }
+         .advanced-toggle:hover {
+            color: var(--text);
+         }
+         .advanced-toggle .arrow {
+            font-size: 11px;
+            transition: transform 0.25s;
+         }
+         .advanced-toggle.open .arrow {
+            transform: rotate(180deg);
+         }
+         .advanced-body {
+            display: none;
+            padding-top: 4px;
+         }
+         .advanced-body.open {
+            display: block;
+         }
+         .hint-small {
+            font-size: 11.5px;
+            color: var(--muted);
+            margin: 5px 0 0;
+            line-height: 1.4;
+         }
+
          .err {
             display: none;
             margin-top: 10px;
@@ -203,6 +211,28 @@
             font-size: 12.5px;
             line-height: 1.4;
          }
+         .btn {
+            width: 100%;
+            margin-top: 14px;
+            padding: 12px 14px;
+            border: 0;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #071022;
+            background: linear-gradient(135deg, var(--accent), #9be7ff);
+            box-shadow: 0 12px 26px rgba(76, 201, 240, 0.25);
+         }
+         .btn:active {
+            transform: translateY(1px);
+         }
+         .sub {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.45;
+         }
          .foot {
             padding: 12px 16px 16px;
             border-top: 1px solid var(--line);
@@ -224,7 +254,7 @@
             <div class="logo" aria-hidden="true"></div>
             <div>
                <h1>SmartFarm</h1>
-               <p>Wi-Fi Provisioning (AP Mode)</p>
+               <p>Wi-Fi Setup</p>
             </div>
          </div>
 
@@ -232,14 +262,13 @@
             <header>
                <h2>ตั้งค่า Wi-Fi</h2>
                <div class="hint">
-                  ใส่ SSID และ Password แล้วกด <b>Save & Reboot</b><br />
-                  เครื่องจะบันทึก
-                  <code>/wifi.json</code> และรีบูตเพื่อเชื่อมต่อแบบอัตโนมัติ
+                  ใส่ชื่อและรหัสผ่าน Wi-Fi แล้วกด <b>Save &amp; Reboot</b>
                </div>
                <div class="pill" id="cfgHint">กำลังโหลดค่าเดิม...</div>
             </header>
 
             <form method="POST" action="/save" id="wifiForm">
+               <!-- ── Wi-Fi STA ── -->
                <label for="ssid">SSID</label>
                <input
                   class="field"
@@ -251,16 +280,14 @@
                />
 
                <label for="password">Password</label>
-               <div class="row">
-                  <input
-                     class="field grow"
-                     id="password"
-                     name="password"
-                     type="password"
-                     autocomplete="new-password"
-                     placeholder="รหัสผ่าน (ถ้ามี)"
-                  />
-               </div>
+               <input
+                  class="field"
+                  id="password"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="รหัสผ่าน (ถ้ามี)"
+               />
 
                <div class="toggle">
                   <input type="checkbox" id="showPass" />
@@ -269,44 +296,119 @@
                   >
                </div>
 
+               <!-- ── Advanced (collapsible) ── -->
+               <button type="button" class="advanced-toggle" id="advBtn">
+                  <span>⚙️ Advanced Settings</span>
+                  <span class="arrow">▼</span>
+               </button>
+
+               <div class="advanced-body" id="advBody">
+                  <label for="hostname">Hostname</label>
+                  <input
+                     class="field"
+                     id="hostname"
+                     name="hostname"
+                     autocomplete="off"
+                     placeholder="smartfarm"
+                  />
+
+                  <label for="apSsid"
+                     >AP SSID
+                     <span style="font-weight: 400"
+                        >(ชื่อ Hotspot ของอุปกรณ์)</span
+                     ></label
+                  >
+                  <input
+                     class="field"
+                     id="apSsid"
+                     name="apSsid"
+                     autocomplete="off"
+                     placeholder="SmartFarm-Setup"
+                  />
+
+                  <label for="apPass"
+                     >AP Password
+                     <span style="font-weight: 400"
+                        >(8 ตัวขึ้นไป หรือเว้นว่าง = open)</span
+                     ></label
+                  >
+                  <input
+                     class="field"
+                     id="apPass"
+                     name="apPass"
+                     type="password"
+                     autocomplete="new-password"
+                     placeholder="เว้นว่าง = ไม่มีรหัสผ่าน"
+                  />
+
+                  <div class="toggle">
+                     <input type="checkbox" id="showApPass" />
+                     <label for="showApPass" style="margin: 0; cursor: pointer"
+                        >แสดงรหัสผ่าน AP</label
+                     >
+                  </div>
+
+                  <div class="hint-small" style="margin-top: 8px">
+                     ⚠️ ถ้าเปลี่ยน AP SSID หรือ Password ต้องเชื่อมต่อ Hotspot
+                     ใหม่หลัง reboot
+                  </div>
+               </div>
+
+               <!-- ── Status ── -->
                <div class="ok" id="okBox"></div>
                <div class="err" id="errBox"></div>
 
-               <button class="btn" type="submit">Save & Reboot</button>
+               <button class="btn" type="submit">Save &amp; Reboot</button>
                <div class="sub">
-                  บันทึกแล้วเครื่องจะรีบูต เข้าผ่าน AP ที่ <b>192.168.4.1</b
-                  ><br />
-                  ถ้าต้องการให้ออกเน็ต ให้กด <b>Connect STA</b> เพื่อเชื่อมต่อ
-                  Wi-Fi
+                  หลัง reboot — เชื่อมต่อ Wi-Fi ปกติ หรือกลับมาที่ Hotspot
+                  ถ้าเชื่อมไม่ได้
                </div>
             </form>
 
-            <div class="foot">AP (SSID: <b>SmartFarm-Setup</b>)</div>
+            <div class="foot" id="footText">
+               AP: <b>SmartFarm-Setup</b> · <a href="/">Dashboard</a>
+            </div>
          </div>
       </div>
 
       <script>
-         const showPass = document.getElementById("showPass");
-         const pass = document.getElementById("password");
-         showPass.addEventListener("change", () => {
-            pass.type = showPass.checked ? "text" : "password";
+         // show/hide password
+         document
+            .getElementById("showPass")
+            .addEventListener("change", function () {
+               document.getElementById("password").type = this.checked
+                  ? "text"
+                  : "password";
+            });
+         document
+            .getElementById("showApPass")
+            .addEventListener("change", function () {
+               document.getElementById("apPass").type = this.checked
+                  ? "text"
+                  : "password";
+            });
+
+         // collapsible advanced
+         const advBtn = document.getElementById("advBtn");
+         const advBody = document.getElementById("advBody");
+         advBtn.addEventListener("click", function () {
+            const open = advBody.classList.toggle("open");
+            advBtn.classList.toggle("open", open);
          });
 
          const form = document.getElementById("wifiForm");
          const errBox = document.getElementById("errBox");
          const okBox = document.getElementById("okBox");
          const cfgHint = document.getElementById("cfgHint");
+         const footEl = document.getElementById("footText");
 
          function showErr(msg) {
             okBox.style.display = "none";
-            okBox.textContent = "";
             errBox.textContent = msg;
             errBox.style.display = "block";
          }
-
          function showOk(msg) {
             errBox.style.display = "none";
-            errBox.textContent = "";
             okBox.textContent = msg;
             okBox.style.display = "block";
          }
@@ -319,43 +421,55 @@
                if (!res.ok) throw new Error("HTTP " + res.status);
                const cfg = await res.json();
 
-               const ssidEl = document.getElementById("ssid");
+               if (cfg.ssid) document.getElementById("ssid").value = cfg.ssid;
+               if (cfg.hostname)
+                  document.getElementById("hostname").value = cfg.hostname;
+               if (cfg.apSsid)
+                  document.getElementById("apSsid").value = cfg.apSsid;
 
-               if (
-                  cfg &&
-                  typeof cfg.ssid === "string" &&
-                  cfg.ssid.trim().length > 0
-               ) {
-                  ssidEl.value = cfg.ssid;
+               // อัปเดต footer
+               const apName = cfg.apSsid || "SmartFarm-Setup";
+               footEl.innerHTML = `AP: <b>${apName}</b> · <a href="/">Dashboard</a>`;
+
+               // ถ้ามี advanced config อยู่แล้ว — เปิด section ให้เลย
+               if (cfg.hostname || cfg.apSsid || cfg.hasApPass) {
+                  advBody.classList.add("open");
+                  advBtn.classList.add("open");
                }
 
-               // เรา "ไม่เติม" password ให้ (ปลอดภัยกว่า) แต่บอกสถานะว่ามี/ไม่มี
-               if (cfg && cfg.hasPassword) {
-                  cfgHint.textContent =
-                     "พบค่าเดิม: SSID ถูกบันทึกไว้ และมี Password";
-                  showOk(
-                     "โหลดค่าเดิมแล้ว (SSID). ถ้าต้องการเปลี่ยนรหัสผ่าน ให้กรอกใหม่แล้วกด Save",
-                  );
-               } else if (cfg && cfg.hasConfig) {
-                  cfgHint.textContent = "พบค่าเดิม: SSID ถูกบันทึกไว้";
+               let hint = "";
+               if (cfg.hasConfig) {
+                  hint = "พบค่าเดิม: SSID";
+                  if (cfg.hasPassword) hint += " + Password";
+                  if (cfg.hasApPass) hint += " · AP มี Password";
+                  showOk("โหลดค่าเดิมแล้ว — กรอกรหัสผ่านใหม่ถ้าต้องการเปลี่ยน");
                } else {
-                  cfgHint.textContent = "ยังไม่เคยตั้งค่า Wi-Fi";
+                  hint = "ยังไม่เคยตั้งค่า";
                }
+               cfgHint.textContent = hint;
             } catch (e) {
                cfgHint.textContent = "โหลดค่าเดิมไม่สำเร็จ";
-               // ไม่ถือว่า fatal เพราะยังกรอกเองได้
             }
          }
 
-         // client-side validate แบบเบาๆ
-         form.addEventListener("submit", (e) => {
+         // validate ก่อน submit
+         form.addEventListener("submit", function (e) {
             errBox.style.display = "none";
-            errBox.textContent = "";
-
             const ssid = (document.getElementById("ssid").value || "").trim();
+            const apPass = document.getElementById("apPass").value || "";
             if (!ssid) {
                e.preventDefault();
                showErr("กรุณากรอก SSID");
+               return;
+            }
+            if (apPass.length > 0 && apPass.length < 8) {
+               e.preventDefault();
+               // เปิด advanced section ให้ผู้ใช้เห็น error
+               advBody.classList.add("open");
+               advBtn.classList.add("open");
+               showErr(
+                  "AP Password ต้องมีอย่างน้อย 8 ตัวอักษร หรือเว้นว่างเพื่อ open AP",
+               );
                return;
             }
          });

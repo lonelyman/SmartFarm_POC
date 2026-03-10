@@ -4,8 +4,8 @@
 #include <WiFi.h>
 #include <esp_wifi.h> // esp_wifi_set_ps() — ปิด power save ลด latency WebServer
 
-static const char *AP_SSID = "SmartFarm-Setup";
-static const char *AP_PASS = nullptr; // open AP
+// default fallback ถ้าไม่มี config เลย
+static const char *DEFAULT_AP_SSID = "SmartFarm-Setup";
 
 // ============================================================
 //  Constructor
@@ -57,22 +57,33 @@ bool Esp32WiFiNetwork::hasValidConfig() const
 }
 
 // ============================================================
-//  AP
+//  AP — ใช้ apSsid/apPass จาก config ถ้ามี
 // ============================================================
 
 void Esp32WiFiNetwork::startAp()
 {
    WiFi.mode(WIFI_AP_STA);
-
-   // ปิด power save — ลด latency WebServer (สำคัญบน S3)
    esp_wifi_set_ps(WIFI_PS_NONE);
+   WiFi.softAPConfig(
+       IPAddress(192, 168, 4, 1),
+       IPAddress(192, 168, 4, 1),
+       IPAddress(255, 255, 255, 0));
 
-   WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
+   const char *apSsid = (_cfg.apSsid.length() > 0)
+                            ? _cfg.apSsid.c_str()
+                            : DEFAULT_AP_SSID;
 
-   const bool ok = WiFi.softAP(AP_SSID, AP_PASS);
+   const char *apPass = (_cfg.apPass.length() >= 8)
+                            ? _cfg.apPass.c_str()
+                            : nullptr; // open AP ถ้า password สั้นกว่า 8 ตัว
+
+   const bool ok = WiFi.softAP(apSsid, apPass);
 
    if (ok)
-      Serial.printf("📶 [WiFi] AP started: SSID=%s IP=%s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+      Serial.printf("📶 [WiFi] AP started: SSID='%s' %s IP=%s\n",
+                    apSsid,
+                    apPass ? "(password)" : "(open)",
+                    WiFi.softAPIP().toString().c_str());
    else
       Serial.println("❌ [WiFi] AP start failed");
 }
@@ -97,7 +108,6 @@ void Esp32WiFiNetwork::startStaConnect()
    WiFi.enableSTA(true);
    WiFi.setAutoReconnect(true);
 
-   // ESP32-S3: setHostname ต้องเรียกก่อน WiFi.begin()
    const char *hn = _cfg.hostname.length() > 0 ? _cfg.hostname.c_str() : "smartfarm";
    WiFi.setHostname(hn);
 
@@ -111,7 +121,7 @@ bool Esp32WiFiNetwork::pollStaConnected() const
 }
 
 // ============================================================
-//  STA — blocking (legacy / NTP sync)
+//  STA — blocking (NTP sync)
 // ============================================================
 
 bool Esp32WiFiNetwork::ensureConnected(uint32_t timeoutMs)
@@ -158,7 +168,6 @@ void Esp32WiFiNetwork::disconnectStaOnly()
    WiFi.enableSTA(false);
    WiFi.enableAP(true);
    WiFi.mode(WIFI_AP);
-
    Serial.printf("📴 [WiFi] STA disabled (AP kept) IP=%s\n", WiFi.softAPIP().toString().c_str());
 }
 
