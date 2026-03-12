@@ -35,8 +35,23 @@ namespace
 
    void initI2C()
    {
-      // ESP32-S3: SDA=8, SCL=9
       Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+      delay(50); // ให้ bus stable ก่อนใช้งาน
+
+#if DEBUG_I2C_SCAN
+      Serial.printf("[I2C] Scanning bus (SDA=%d SCL=%d)...\n", PIN_I2C_SDA, PIN_I2C_SCL);
+      uint8_t found = 0;
+      for (uint8_t addr = 1; addr < 127; addr++)
+      {
+         Wire.beginTransmission(addr);
+         if (Wire.endTransmission() == 0)
+         {
+            Serial.printf("[I2C] ✅ 0x%02X\n", addr);
+            found++;
+         }
+      }
+      Serial.printf("[I2C] Scan done: %u device(s) found\n", found);
+#endif
    }
 
    // โหลด schedule จาก LittleFS → ISchedule
@@ -45,25 +60,20 @@ namespace
    {
       if (!LittleFS.begin(true)) // true = format on fail (ช่วย first boot)
       {
-         Serial.println("⚠️ LittleFS mount failed, schedules disabled");
+         Serial.println("⚠️ [BOOT] LittleFS mount failed, schedules disabled");
          return;
       }
-
-      Serial.println("✅ LittleFS mount OK");
+      Serial.println("✅ [BOOT] LittleFS OK");
 
       if (ctx.scheduledAirPump)
-      {
-         // ดึง ISchedule จาก ScheduledRelay ผ่าน getSchedule()
-         loadScheduleFromFS("/schedule.json", "air_pump",
-                            ctx.scheduledAirPump->getSchedule());
-      }
+         loadScheduleFromFS("/schedule.json", "air_pump", ctx.scheduledAirPump->getSchedule());
    }
 
    void initModeSource(SystemContext &ctx)
    {
       if (!ctx.modeSource)
       {
-         Serial.println("⚠️ modeSource is null (mode switch disabled)");
+         Serial.println("⚠️ [BOOT] modeSource is null (mode switch disabled)");
          return;
       }
       ctx.modeSource->begin();
@@ -73,7 +83,7 @@ namespace
    {
       if (!ctx.netModeSource)
       {
-         Serial.println("⚠️ netModeSource is null (net switch disabled)");
+         Serial.println("⚠️ [BOOT] netModeSource is null (net switch disabled)");
          return;
       }
       ctx.netModeSource->begin();
@@ -81,9 +91,12 @@ namespace
 
    void initDrivers(SystemContext &ctx)
    {
-      // Sensors
-      ctx.lightSensor->begin();
-      ctx.tempSensor->begin();
+      // --- Sensors ---
+      if (!ctx.lightSensor->begin())
+         Serial.println("❌ [BOOT] lightSensor init FAILED!");
+
+      if (!ctx.tempSensor->begin())
+         Serial.println("❌ [BOOT] tempSensor init FAILED!");
 
       if (ctx.waterLevelInput)
          ctx.waterLevelInput->begin();
@@ -94,7 +107,7 @@ namespace
       if (ctx.ui)
          ctx.ui->begin();
 
-      // Actuators
+      // --- Actuators ---
       ctx.waterPump->begin();
       ctx.mistSystem->begin();
       ctx.airPump->begin();
@@ -106,7 +119,7 @@ namespace
       if (ctx.swManualAir)
          ctx.swManualAir->begin();
 
-      // Water level alarm LEDs
+      // --- Water level alarm LEDs ---
       const uint8_t LED_OFF = ALARM_LED_ACTIVE_HIGH ? LOW : HIGH;
       pinMode(PIN_WATER_LEVEL_CH1_ALARM_LED, OUTPUT);
       pinMode(PIN_WATER_LEVEL_CH2_ALARM_LED, OUTPUT);
@@ -118,7 +131,7 @@ namespace
    {
       if (!ctx.network)
       {
-         Serial.println("⚠️ network is null (wifi disabled)");
+         Serial.println("⚠️ [BOOT] network is null (wifi disabled)");
          return;
       }
       ctx.network->begin();
@@ -128,7 +141,7 @@ namespace
    {
       if (!ctx.clock)
       {
-         Serial.println("⚠️ clock is null (time disabled)");
+         Serial.println("⚠️ [BOOT] clock is null (time disabled)");
          return;
       }
 #if DEBUG_TIME_LOG
@@ -160,10 +173,8 @@ void AppBoot::setup(SystemContext &ctx)
 
    // ⚠️ ลำดับสำคัญ: initRelayPins ต้องมาก่อน initDrivers และ startTasks เสมอ
    initRelayPins();
-
    initI2C();
    initFileSystemAndSchedule(ctx);
-
    initModeSource(ctx);
    initNetModeSource(ctx);
    initClock(ctx);
@@ -172,5 +183,5 @@ void AppBoot::setup(SystemContext &ctx)
    setInitialSafeState(ctx);
    startTasks(ctx);
 
-   Serial.println("🚀 SmartFarm System: Ready and Linked.");
+   Serial.println("🚀 SmartFarm System: Ready.");
 }
