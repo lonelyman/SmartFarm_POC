@@ -69,6 +69,7 @@ public:
 
     // --- Mode ---
     void setMode(SystemMode mode);
+    SystemMode getMode() const; // อ่าน mode อย่างเดียว — lock scope เล็กกว่า getSnapshot()
 
     // --- Sensors ---
     void updateSensors(float lux, bool luxValid, float ec, bool ecValid, uint32_t ts);

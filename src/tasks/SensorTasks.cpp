@@ -1,5 +1,4 @@
 // src/tasks/SensorTasks.cpp
-// src/tasks/SensorTasks.cpp
 
 #include <Arduino.h>
 
@@ -26,17 +25,17 @@ static void logMinutesAsClock(const char *tag, uint16_t minutesOfDay)
 }
 
 // อ่าน mode จาก physical switch แล้วอัปเดต SharedState เมื่อเปลี่ยน
-static void updateModeFromSource(SystemContext &ctx, SystemStatus &status)
+// เรียกจาก inputTask เท่านั้น — hardware อ่านได้ที่เดียว
+static void updateModeFromSource(SystemContext &ctx)
 {
 	if (!ctx.modeSource)
 		return;
 
 	const SystemMode newMode = ctx.modeSource->readMode();
-	if (newMode == status.mode)
+	if (newMode == ctx.state->getMode())
 		return;
 
 	ctx.state->setMode(newMode);
-	status.mode = newMode;
 
 	switch (newMode)
 	{
@@ -69,10 +68,8 @@ static void updateWaterLevelAlarmLeds(const WaterLevelSensors &wl)
 	const uint8_t LED_ON = ALARM_LED_ACTIVE_HIGH ? HIGH : LOW;
 	const uint8_t LED_OFF = ALARM_LED_ACTIVE_HIGH ? LOW : HIGH;
 
-	digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED,
-					 wl.ch1Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
-	digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED,
-					 wl.ch2Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
+	digitalWrite(PIN_WATER_LEVEL_CH1_ALARM_LED, wl.ch1Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
+	digitalWrite(PIN_WATER_LEVEL_CH2_ALARM_LED, wl.ch2Low ? (ledPhase ? LED_ON : LED_OFF) : LED_OFF);
 }
 
 // ============================================================
@@ -101,8 +98,7 @@ void inputTask(void *pvParameters)
 
 		ctx->state->updateSensors(lux.value, lux.isValid, 0.0f, false, now);
 		ctx->state->updateTemperature(t.value, t.isValid, now);
-		ctx->state->updateHumidity(ctx->tempSensor->getLastHumidity(),
-											ctx->tempSensor->isHumidityValid(), now);
+		ctx->state->updateHumidity(ctx->tempSensor->getLastHumidity(), ctx->tempSensor->isHumidityValid(), now);
 
 		// --- Water Temperature (DS18B20) ---
 		if (ctx->waterTempSensor && ctx->waterTempSensor->count() > 0)
@@ -120,11 +116,13 @@ void inputTask(void *pvParameters)
 			ctx->state->updateWaterTemps(readings, ctx->waterTempSensor->count());
 		}
 
+		// --- Mode Switch (physical) → SharedState ---
+		updateModeFromSource(*ctx);
+
 		// --- Manual Switches → SharedState (เฉพาะ MANUAL mode) ---
 		if (ctx->swManualPump && ctx->swManualMist && ctx->swManualAir)
 		{
-			const SystemStatus snap = ctx->state->getSnapshot();
-			if (snap.mode == SystemMode::MANUAL)
+			if (ctx->state->getMode() == SystemMode::MANUAL)
 			{
 				ManualOverrides sw{};
 				sw.wantPumpOn = ctx->swManualPump->isOn();
@@ -141,8 +139,7 @@ void inputTask(void *pvParameters)
 			ctx->state->updateWaterLevelSensors(wl.ch1Low, wl.ch2Low, now);
 
 #if DEBUG_WATER_LEVEL_LOG
-			Serial.printf("[WLVL] ch1Low=%d ch2Low=%d\n",
-							  wl.ch1Low ? 1 : 0, wl.ch2Low ? 1 : 0);
+			Serial.printf("[WLVL] ch1Low=%d ch2Low=%d\n", wl.ch1Low ? 1 : 0, wl.ch2Low ? 1 : 0);
 #endif
 		}
 
@@ -150,8 +147,7 @@ void inputTask(void *pvParameters)
 		Serial.printf("[InputTask] lux=%.1f valid=%d\n", lux.value, lux.isValid ? 1 : 0);
 #endif
 #if DEBUG_TEMP_LOG
-		Serial.printf("[InputTask] temp=%.2f hum=%.1f valid=%d\n",
-						  t.value, ctx->tempSensor->getLastHumidity(), t.isValid ? 1 : 0);
+		Serial.printf("[InputTask] temp=%.2f hum=%.1f valid=%d\n", t.value, ctx->tempSensor->getLastHumidity(), t.isValid ? 1 : 0);
 #endif
 		vTaskDelay(pdMS_TO_TICKS(INPUT_TASK_INTERVAL_MS));
 	}
@@ -182,8 +178,7 @@ void controlTask(void *pvParameters)
 			if (ctx->state->consumeSetClockTime(req))
 			{
 				if (ctx->clock->setTimeOfDay(req.hour, req.minute, req.second))
-					Serial.printf("[CLOCK] time set: %02u:%02u:%02u\n",
-									  req.hour, req.minute, req.second);
+					Serial.printf("[CLOCK] time set: %02u:%02u:%02u\n", req.hour, req.minute, req.second);
 				else
 					Serial.println("[CLOCK] time set failed");
 			}
@@ -209,16 +204,7 @@ void controlTask(void *pvParameters)
 		// 3) Update alarm LEDs ตาม water level
 		updateWaterLevelAlarmLeds(status.waterLevelSensors);
 
-		// 4) Sync mode จาก physical switch → SharedState
-		updateModeFromSource(*ctx, status);
-
-#if DEBUG_CONTROL_LOG
-		Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n",
-						  (int)status.mode,
-						  ctx->waterPump->isOn() ? 1 : 0,
-						  ctx->mistSystem->isOn() ? 1 : 0,
-						  ctx->airPump->isOn() ? 1 : 0);
-#endif
+		// 4) mode มาจาก getSnapshot() ด้านบนแล้ว — physical switch อ่านใน inputTask
 
 		// 5) Map snapshot → FarmInput
 		FarmInput in{};
@@ -242,10 +228,12 @@ void controlTask(void *pvParameters)
 			ctx->scheduledAirPump->update(minutesOfDay);
 
 		// 9) Sync actuator state กลับ SharedState (ให้ WebUI / API อ่านได้)
-		ctx->state->updateActuators(ctx->waterPump->isOn(),
-											 ctx->mistSystem->isOn(),
-											 ctx->airPump->isOn());
+		ctx->state->updateActuators(ctx->waterPump->isOn(), ctx->mistSystem->isOn(), ctx->airPump->isOn());
 
+		// 10) Log สถานะหลัง sync — ข้อมูลตรงกับรอบนี้แน่นอน
+#if DEBUG_CONTROL_LOG
+		Serial.printf("[ControlTask] mode=%d pump=%d mist=%d air=%d\n", (int)status.mode, ctx->waterPump->isOn() ? 1 : 0, ctx->mistSystem->isOn() ? 1 : 0, ctx->airPump->isOn() ? 1 : 0);
+#endif
 		vTaskDelay(pdMS_TO_TICKS(CONTROL_TASK_INTERVAL_MS));
 	}
 }
