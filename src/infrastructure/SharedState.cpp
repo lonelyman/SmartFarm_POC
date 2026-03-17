@@ -46,6 +46,14 @@ void SharedState::setMode(SystemMode mode)
       _status.mode = mode;
 }
 
+SystemMode SharedState::getMode() const
+{
+   SystemMode temp = SystemMode::IDLE;
+   if (Lock lk{_mutex})
+      temp = _status.mode;
+   return temp;
+}
+
 // ============================================================
 //  Sensors
 // ============================================================
