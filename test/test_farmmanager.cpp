@@ -14,9 +14,11 @@
 class MockActuator : public IActuator
 {
 public:
+   bool begin() override { return true; }
    void turnOn() override { _on = true; }
    void turnOff() override { _on = false; }
    bool isOn() const override { return _on; }
+   const char *getName() const override { return "MockActuator"; }
 
 private:
    bool _on = false;
@@ -61,17 +63,63 @@ void test_auto_mist_temp_hysteresis(void)
    FarmDecision dec1 = mgr.update(makeInput(SystemMode::AUTO, 28.0f, true, 0));
    TEST_ASSERT_FALSE(dec1.mistOn);
 
-   // ข้าม ON threshold (32°C) → on
-   FarmDecision dec2 = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0));
+   // ข้าม ON threshold (32°C) — ต้องครบ MIST_CONFIRM_ON_COUNT รอบ (=3) ถึงเปิด
+   mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0));                     // รอบ 1
+   mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0));                     // รอบ 2
+   FarmDecision dec2 = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0)); // รอบ 3 → on
    TEST_ASSERT_TRUE(dec2.mistOn);
 
    // dead-band (30°C ระหว่าง 29–32) → latch previous = true
    FarmDecision dec3 = mgr.update(makeInput(SystemMode::AUTO, 30.0f, true, 0));
    TEST_ASSERT_TRUE(dec3.mistOn);
 
-   // ต่ำกว่า OFF threshold (28°C) → off
-   FarmDecision dec4 = mgr.update(makeInput(SystemMode::AUTO, 28.0f, true, 0));
+   // ต่ำกว่า OFF threshold (28°C) → ต้องครบ MIST_CONFIRM_OFF_COUNT รอบ (=3) ถึงปิด
+   mgr.update(makeInput(SystemMode::AUTO, 28.0f, true, 0));                     // รอบ 1
+   mgr.update(makeInput(SystemMode::AUTO, 28.0f, true, 0));                     // รอบ 2
+   FarmDecision dec4 = mgr.update(makeInput(SystemMode::AUTO, 28.0f, true, 0)); // รอบ 3 → off
    TEST_ASSERT_FALSE(dec4.mistOn);
+}
+
+// ทดสอบ: ค่าข้ามเส้น 1 รอบ → ยังไม่เปิด (MIST_CONFIRM_ON_COUNT=3)
+void test_mist_confirm_single_spike_ignored(void)
+{
+   FarmManager mgr;
+
+   // รอบเดียวที่ข้ามเส้น ON (temp>=32, hum<=65) → ต้องยังไม่เปิด
+   FarmDecision dec = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   TEST_ASSERT_FALSE(dec.mistOn);
+}
+
+// ทดสอบ: ค่าข้ามเส้นติดต่อกัน 3 รอบ → เปิด
+void test_mist_confirm_opens_after_n_rounds(void)
+{
+   FarmManager mgr;
+
+   // รอบ 1 และ 2 — ยังไม่เปิด
+   mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   FarmDecision dec2 = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   TEST_ASSERT_FALSE(dec2.mistOn);
+
+   // รอบ 3 — ครบ confirm → เปิด
+   FarmDecision dec3 = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   TEST_ASSERT_TRUE(dec3.mistOn);
+}
+
+// ทดสอบ: ค่าข้ามเส้น 2 รอบ แล้วหาย 1 รอบ → reset ไม่เปิด
+void test_mist_confirm_reset_on_break(void)
+{
+   FarmManager mgr;
+
+   // รอบ 1, 2 — สะสม count
+   mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+
+   // รอบ 3 — ค่ากลับเข้า deadband → reset count
+   mgr.update(makeInput(SystemMode::AUTO, 30.0f, true, 0, 67.0f, true));
+
+   // รอบ 4 — เริ่มนับใหม่ → ยังไม่เปิด
+   FarmDecision dec = mgr.update(makeInput(SystemMode::AUTO, 33.0f, true, 0, 64.0f, true));
+   TEST_ASSERT_FALSE(dec.mistOn);
 }
 
 void test_manual_overrides(void)
@@ -160,6 +208,11 @@ void setup()
    RUN_TEST(test_idle_resets_actuators);
    RUN_TEST(test_auto_mist_temp_hysteresis);
    RUN_TEST(test_manual_overrides);
+
+   // Mist Confirmation Counter
+   RUN_TEST(test_mist_confirm_single_spike_ignored);
+   RUN_TEST(test_mist_confirm_opens_after_n_rounds);
+   RUN_TEST(test_mist_confirm_reset_on_break);
 
    // ScheduledRelay + TimeSchedule
    RUN_TEST(test_scheduled_relay_in_window);

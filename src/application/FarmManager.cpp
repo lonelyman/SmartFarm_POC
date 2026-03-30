@@ -16,6 +16,8 @@ FarmDecision FarmManager::update(const FarmInput &in)
       _mistForced = false;
       _bootGuardDone = false;
       _bootTime = 0;
+      _mistOnCount = 0;
+      _mistOffCount = 0;
       break;
 
    case SystemMode::MANUAL:
@@ -69,7 +71,27 @@ FarmDecision FarmManager::applyAuto(const FarmInput &in)
    else
       sensorWantsOn = decideMistByTemp(in.temperatureC, in.temperatureValid);
 
-   out.mistOn = applyMistGuard(sensorWantsOn);
+   // --- Confirmation counter ---
+   // ต้องเห็นสัญญาณเดิมติดต่อกัน N รอบก่อนเชื่อ
+   // ป้องกันค่า sensor ที่ข้ามเส้นชั่วคราวเพียงรอบเดียว
+   if (sensorWantsOn)
+   {
+      _mistOnCount++;
+      if (_mistOnCount > MIST_CONFIRM_ON_COUNT)
+         _mistOnCount = MIST_CONFIRM_ON_COUNT; // cap ไม่ให้ overflow
+      _mistOffCount = 0;
+   }
+   else
+   {
+      _mistOffCount++;
+      if (_mistOffCount > MIST_CONFIRM_OFF_COUNT)
+         _mistOffCount = MIST_CONFIRM_OFF_COUNT; // cap ไม่ให้ overflow
+      _mistOnCount = 0;
+   }
+
+   // ส่งต่อ MistGuard เฉพาะเมื่อ confirm ครบ
+   const bool confirmed = (_mistOnCount >= MIST_CONFIRM_ON_COUNT);
+   out.mistOn = applyMistGuard(confirmed);
 
    return out;
 }
