@@ -37,6 +37,11 @@ private:
     uint32_t _mistOffSince = 0;
     bool _mistForced = false;
 
+    // mist confirmation counter
+    // ป้องกันการเปิด/ยกเลิกจากค่า sensor ที่ข้ามเส้นชั่วคราวเพียงรอบเดียว
+    uint8_t _mistOnCount  = 0; // นับรอบที่ sensorWantsOn=TRUE ติดต่อกัน
+    uint8_t _mistOffCount = 0; // นับรอบที่ sensorWantsOn=FALSE ติดต่อกัน
+
     FarmDecision applyManual(const ManualOverrides &m);
     FarmDecision applyAuto(const FarmInput &in);
 
