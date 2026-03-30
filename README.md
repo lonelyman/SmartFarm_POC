@@ -1,473 +1,667 @@
-# 🌱 SmartFarm POC
+# SmartFarm POC
 
-> **สถานะโปรเจค: Phase 1 — Core Automation สมบูรณ์ · Phase 2 — Water Pump AUTO + Water Level Integration กำลังพัฒนา**
-
-SmartFarm เป็นระบบควบคุมฟาร์มอัตโนมัติบน **ESP32-S3 + FreeRTOS** ออกแบบตาม **Clean Architecture** แยก business logic ออกจาก hardware เพื่อให้ทดสอบและ port ได้ง่าย
-
-ควบคุม Water Pump / Mist System / Air Pump ผ่าน 4 ช่องทาง:
-- 🌐 **Web Dashboard** — หน้าเว็บ responsive บน ESP32
-- 🖥️ **Serial CLI** — ผ่าน USB / Serial Monitor (`sm <command>`)
-- ⏰ **Schedule Automation** — ตาราง JSON สำหรับ Air Pump
-- 🔘 **Physical Switch** — สวิตช์หน้าตู้ควบคุมโดยตรง
+ระบบควบคุมฟาร์มอัจฉริยะสำหรับ ESP32-S3 พัฒนาด้วย PlatformIO + Arduino Framework
+ออกแบบตาม Clean Architecture — แยก Domain / Application / Infrastructure ออกจากกัน ทดสอบได้โดยไม่ต้องมี hardware
 
 ---
 
-## 📋 สถานะ Feature ปัจจุบัน
+## สารบัญ
 
-| Feature | สถานะ | หมายเหตุ |
-|---|---|---|
-| **Mist System AUTO** — Hysteresis (Temp + Humidity) | ✅ สมบูรณ์ | ON >32°C / OFF <29°C, dead-band hold, MistGuard |
-| **Mist Time Guard** | ✅ สมบูรณ์ | ON สูงสุด 3 นาที, พัก 5 นาที ป้องกัน overrun |
-| **Air Pump Schedule** — ตาราง JSON | ✅ สมบูรณ์ | โหลดจาก `/schedule.json` ใน LittleFS |
-| **Manual Mode** — Switch หน้าตู้ | ✅ สมบูรณ์ | Physical switch + Serial CLI + Web |
-| **IDLE Mode** — ปิดระบบปลอดภัย | ✅ สมบูรณ์ | ปิด actuator ทุกตัว, reset state |
-| **Serial CLI** — `sm <command>` | ✅ สมบูรณ์ | mode, relay, net, clock, status, help |
-| **Web Dashboard** — `/` | ✅ สมบูรณ์ | sensor values, actuator states, mode switch |
-| **WiFi Config** — AP + STA | ✅ สมบูรณ์ | offline-first AP, STA connect, timeout detect |
-| **WiFi Setup Page** — `/wifi` | ✅ สมบูรณ์ | บันทึก SSID/pass ลง LittleFS, reboot |
-| **RTC DS3231** — นาฬิกา | ✅ สมบูรณ์ | NTP sync, set via CLI |
-| **Sensor BH1750** — แสง (Lux) | ✅ สมบูรณ์ | อ่านค่า + valid flag |
-| **Sensor SHT40** — Temp + Humidity | ✅ สมบูรณ์ | ใช้ control mist AUTO |
-| **Sensor DS18B20** — อุณหภูมิน้ำ | ✅ สมบูรณ์ | รองรับสูงสุด 4 ตัว (1-Wire) |
-| **Water Level XKC-Y25** — CH1/CH2 | ✅ Driver พร้อม | LED alarm กระพริบ, flag ปิดอยู่ (Feature Flag) |
-| **Boot Glitch Protection** | ✅ สมบูรณ์ | initRelayPins() ก่อน FreeRTOS tasks |
-| **Boot Guard** — หน่วง 10 วินาที | ✅ สมบูรณ์ | ป้องกัน AUTO สั่งงานก่อน sensor stable |
-| **Unit Tests** — FarmManager + ScheduledRelay | ✅ 6 test cases | ใช้ Unity framework |
-| **Water Pump AUTO Logic** | 🔲 TODO | placeholder ใน FarmManager |
-| **EC Sensor** | 🔲 TODO | reserved field ใน Types.h |
-| **Schedule Web API (GET/POST)** | 🔲 TODO | endpoint ยังไม่มี |
-| **Water Temp แสดงบน Dashboard** | 🔲 TODO | state มีแล้ว WebUI ยังไม่ render |
-| **Water Level แสดงบน Dashboard** | 🔲 TODO | state มีแล้ว WebUI ยังไม่ render |
+1. [ภาพรวมระบบ](#ภาพรวมระบบ)
+2. [Hardware](#hardware)
+3. [โครงสร้างโปรเจกต์](#โครงสร้างโปรเจกต์)
+4. [Architecture](#architecture)
+5. [การทำงานของระบบ (Tasks)](#การทำงานของระบบ-tasks)
+6. [Sensors & Actuators](#sensors--actuators)
+7. [GPIO Pin Map](#gpio-pin-map)
+8. [Control Logic](#control-logic)
+9. [Web UI & API](#web-ui--api)
+10.   [Serial CLI](#serial-cli)
+11.   [Network & WiFi](#network--wifi)
+12.   [Air Pump Schedule](#air-pump-schedule)
+13.   [การติดตั้งและ Build](#การติดตั้งและ-build)
+14.   [Configuration](#configuration)
+15.   [Unit Tests](#unit-tests)
+16.   [สิ่งที่ยังไม่ implement (TODO)](#สิ่งที่ยังไม่-implement-todo)
 
 ---
 
-## 🧠 Architecture
+## ภาพรวมระบบ
 
-Clean Architecture สำหรับ Embedded — dependency ไหลทางเดียวจากล่างขึ้นบน
+SmartFarm POC ควบคุมอุปกรณ์ในฟาร์ม 3 ชุดหลัก:
 
-```
-┌──────────────────────────────────────────┐
-│  Tasks / Main  (FreeRTOS wiring)         │  ← inputTask, controlTask, commandTask
-│                                          │     networkTask, webUiTask
-├──────────────────────────────────────────┤
-│  Infrastructure                          │  ← SharedState, AppBoot, RtcClock
-│                                          │     Esp32WiFiNetwork, Esp32WebUi
-│                                          │     ScheduleStore, WifiConfigStore
-├──────────────────────────────────────────┤
-│  Drivers  (Hardware Adapters)            │  ← Esp32Relay, Esp32ManualSwitch
-│                                          │     Esp32Bh1750Light, Esp32Sht40
-│                                          │     Esp32Ds18b20, Esp32WaterLevelInput
-│                                          │     RtcDs3231Time, Esp32NetModeSwitch
-├──────────────────────────────────────────┤
-│  Application                             │
-│    FarmManager    — pump + mist decision │  ← sensor-based hysteresis + time guard
-│    ScheduledRelay — air pump schedule    │  ← time-window based (minutes of day)
-│    CommandService — CLI handler          │
-├──────────────────────────────────────────┤
-│  Domain  (ไม่มี Arduino API)             │  ← TimeSchedule, TimeWindow
-├──────────────────────────────────────────┤
-│  Interfaces  (Contracts / Abstractions)  │  ← ISensor, IActuator, ISchedule
-│                                          │     INetwork, IUi, IClock, IModeSource
-└──────────────────────────────────────────┘
-```
+| อุปกรณ์                    | การควบคุม                                            |
+| -------------------------- | ---------------------------------------------------- |
+| **Water Pump** (ปั๊มน้ำ)   | Manual / Auto (logic ยังไม่ implement)               |
+| **Mist System** (ปั๊มหมอก) | Auto (อุณหภูมิ + ความชื้น + hysteresis + time guard) |
+| **Air Pump** (ปั๊มลม)      | ตามตาราง schedule (JSON)                             |
 
-**กฎสำคัญ:**
-- **Domain layer ห้ามแตะ Arduino API** — ทดสอบได้บน host โดยไม่ต้องมี hardware
-- **Relay สั่งงานจาก `controlTask` เท่านั้น** — ห้าม task อื่นสัมผัส actuator โดยตรง
-- **คำสั่งจาก Serial / Web → `SharedState` เสมอ** — thread-safe ผ่าน FreeRTOS mutex
-- **Air Pump ควบคุมโดย `ScheduledRelay`** — ไม่ผ่าน `FarmDecision`
+ระบบรองรับ 3 โหมด:
+
+- **IDLE** — ปิดทุกอย่าง (safe state)
+- **AUTO** — ระบบตัดสินใจเองจากเซนเซอร์
+- **MANUAL** — สั่งงานตรงผ่าน physical switch / Serial CLI / Web UI
 
 ---
 
-## ⚙️ Task Map & FreeRTOS Layout
+## Hardware
 
-| Task | Core | Priority | หน้าที่ |
-|---|---|---|---|
-| `inputTask` | 1 | 1 | อ่าน sensor + switch ทุก 1 วินาที |
-| `controlTask` | 1 | 2 | ตัดสินใจ + สั่ง actuator ทุก 1 วินาที |
-| `commandTask` | 0 | 1 | รับ Serial CLI ทุก 50ms |
-| `networkTask` | 0 | 1 | WiFi state machine (AP/STA/NTP) |
-| `webUiTask` | 1 | 1 | `WebUi.tick()` ทุก 10ms |
+| รายการ        | รายละเอียด                                |
+| ------------- | ----------------------------------------- |
+| **MCU**       | ESP32-S3-WROOM-1 N16R8 (44-Pin DevKitC-1) |
+| **Flash**     | 16 MB QIO                                 |
+| **PSRAM**     | 8 MB Octal (OPI)                          |
+| **Framework** | Arduino via PlatformIO                    |
+| **OS**        | FreeRTOS (built-in)                       |
 
-**SharedState** คือ single source of truth ระหว่าง task ทั้งหมด (mutex-protected)
+### ข้อควรระวังด้าน GPIO (N16R8)
 
----
-
-## ⚡ Boot Sequence
-
-```
-main::setup()
-  └─ AppBoot::setup(ctx)
-       ├── initRelayPins()          ← ⚠️ ต้องก่อน task — ป้องกัน boot glitch
-       ├── initI2C()                ← Wire.begin(SDA=8, SCL=9)
-       ├── initFileSystemAndSchedule() ← mount LittleFS + โหลด schedule.json
-       ├── initModeSource()         ← Physical mode switch
-       ├── initNetModeSource()      ← Net AP/STA switch
-       ├── initClock()              ← RtcClock (DS3231)
-       ├── initDrivers()            ← Sensor, Relay, Switch, LED begin()
-       ├── initNetwork()            ← WiFi begin()
-       ├── setInitialSafeState()    ← IDLE mode เสมอ
-       └── startTasks()             ← สร้าง FreeRTOS tasks ทั้งหมด
-```
+- **GPIO 26–37** — ถูก reserve โดย Flash/PSRAM ห้ามใช้
+- **GPIO 0** — Strapping pin ต้องมี pull-up 10kΩ ไปยัง 3.3V
+- **GPIO 19–20** — USB D−/D+ ห้ามต่ออุปกรณ์ภายนอก
+- **GPIO 39** — Input only ห้ามใช้เป็น output
 
 ---
 
-## 🧩 Hardware
-
-### Board: ESP32-S3-WROOM-1 N16R8 (44-Pin DevKitC-1)
-
-| รายการ | ค่า |
-|---|---|
-| CPU | Xtensa LX7 Dual-Core 240MHz |
-| Flash | 16 MB QIO |
-| PSRAM | 8 MB Octal (OPI) |
-| Framework | Arduino + FreeRTOS |
-| PlatformIO board | `esp32-s3-devkitc-1` |
-
-### GPIO Pinout สรุป
-
-| GPIO | ฟังก์ชัน | หมายเหตุ |
-|---|---|---|
-| 8 | I2C SDA | BH1750, SHT40, DS3231 |
-| 9 | I2C SCL | ต้อง pull-up 4.7kΩ ทั้ง SDA/SCL |
-| 4 | 1-Wire DATA | DS18B20 (ต้อง pull-up 4.7kΩ) |
-| 38 | Relay — Water Pump | Active LOW |
-| 40 | Relay — Mist System | Active LOW |
-| 41 | Relay — Air Pump | Active LOW |
-| 18 | SW Manual Pump | INPUT_PULLUP |
-| 5 | SW Manual Mist | INPUT_PULLUP |
-| 15 | SW Manual Air | INPUT_PULLUP |
-| 6 | SW Mode A | Mode encode bit A |
-| 7 | SW Mode B | Mode encode bit B |
-| 39 | SW Net (AP/STA) | Input-only GPIO |
-| 1 | Water Level CH1 | XKC-Y25 |
-| 2 | Water Level CH2 | XKC-Y25 |
-| 47 | LED Alarm CH1 | Active HIGH |
-| 10 | LED Alarm CH2 | Active HIGH |
-
-> ⚠️ **GPIO26–37 ห้ามใช้** บนโมดูล N16R8 (Octal PSRAM) — ถูก reserve โดย Flash/PSRAM
-
-### Mode Switch Encoding (GPIO6 + GPIO7)
-
-| SW_MODE_A | SW_MODE_B | SystemMode |
-|---|---|---|
-| LOW | LOW | IDLE |
-| HIGH | LOW | AUTO |
-| LOW | HIGH | MANUAL |
-
----
-
-## 🌡️ Control Logic
-
-### Mist System (AUTO mode)
-
-ใช้ **Hysteresis** ป้องกัน on/off กระชั้น:
-
-```
-Temp ≥ 32°C AND Humidity ≤ 65%RH  →  เปิด Mist
-Temp ≤ 29°C OR  Humidity ≥ 75%RH  →  ปิด Mist
-ระหว่างกัน                         →  คงสถานะเดิม (dead-band)
-```
-
-ถ้า valid เฉพาะ Temp → ใช้ Temp อย่างเดียว  
-ถ้า valid เฉพาะ Humidity → ใช้ Humidity อย่างเดียว
-
-### Mist Time Guard
-
-ป้องกันปั๊มหมอกทำงานนานเกินไป:
-- เปิดได้สูงสุด **3 นาที** ต่อรอบ
-- บังคับพัก **5 นาที** ก่อนเปิดรอบถัดไป
-
-### Air Pump (Time Schedule)
-
-โหลดตารางจาก `/schedule.json` (LittleFS) เป็น Time Window หลายช่วง  
-เปลี่ยน schedule โดยแก้ไขไฟล์ JSON แล้ว reboot
-
-```json
-{
-  "air_pump": {
-    "enabled": true,
-    "windows": [
-      { "start": "07:00", "end": "08:00" },
-      { "start": "13:00", "end": "14:00" }
-    ]
-  }
-}
-```
-
-### Water Pump (AUTO mode)
-
-> 🔲 **ยังไม่ implement** — placeholder ใน `FarmManager::applyAuto()` คืน `pumpOn = false`  
-> แนะนำ: ต่อยอดจาก Water Level sensor + schedule แบบ demand-driven
-
----
-
-## 🌐 Web UI & API
-
-### Pages
-
-| URL | คำอธิบาย |
-|---|---|
-| `/` | Dashboard — sensor, actuator state, mode control |
-| `/wifi` | WiFi Setup — ตั้ง SSID/password, hostname, AP name |
-| `/wifi-saved` | หน้าแจ้ง save สำเร็จ (redirect กลับหลัง reboot) |
-
-### REST API
-
-| Method | Endpoint | คำอธิบาย |
-|---|---|---|
-| GET | `/api/status` | JSON snapshot ของระบบทั้งหมด |
-| GET | `/api/wifi/config` | WiFi config ปัจจุบัน (ไม่รวม password) |
-| POST | `/api/mode/auto` | เปลี่ยน mode → AUTO |
-| POST | `/api/mode/manual` | เปลี่ยน mode → MANUAL |
-| POST | `/api/mode/idle` | เปลี่ยน mode → IDLE |
-| POST | `/api/net/on` | สั่งต่อ WiFi STA |
-| POST | `/api/net/off` | สั่งตัด WiFi STA |
-| POST | `/api/ntp` | สั่ง sync NTP |
-| POST | `/save` | บันทึก WiFi config + reboot |
-
-### `/api/status` Response
-
-```json
-{
-  "mode": 1,
-  "pump": false,
-  "mist": true,
-  "air": false,
-  "lux": "1234.5",
-  "luxValid": true,
-  "temp": "30.25",
-  "tempValid": true,
-  "hum": "62.0",
-  "humValid": true,
-  "wifiMode": 3,
-  "staConnected": true,
-  "apIp": "192.168.4.1",
-  "staIp": "192.168.1.42",
-  "netState": 2,
-  "netMsg": "WiFi connected."
-}
-```
-
----
-
-## 🖥️ Serial CLI
-
-Prefix: `sm` (ตั้งค่าใน `Config.h`)  
-Baud rate: **115200**
-
-```bash
-# Mode
-sm mode auto
-sm mode manual
-sm mode idle
-
-# Relay (ใช้ได้เฉพาะ MANUAL mode)
-sm relay pump on
-sm relay pump off
-sm relay mist on
-sm relay mist off
-sm relay air on
-sm relay air off
-
-# Network
-sm net on         # ต่อ WiFi STA (ต้องมี config ก่อน)
-sm net off        # ตัด STA, กลับ AP
-sm net ntp        # sync NTP (ต้อง STA connected)
-
-# Clock
-sm clock set 13:30
-sm clock set 13:30:00
-
-# Status & Help
-sm status
-sm help
-sm clear
-```
-
----
-
-## 🔧 การตั้งค่า (`include/Config.h`)
-
-### Feature Flags
-
-```cpp
-#define ENABLE_WATER_LEVEL_CH1 0  // 1=เปิด, 0=ปิด
-#define ENABLE_WATER_LEVEL_CH2 0  // ปิดถ้าไม่มีเซนเซอร์ต่อ
-```
-
-### Debug Log Switches
-
-```cpp
-#define DEBUG_BH1750_LOG     1
-#define DEBUG_TEMP_LOG       0
-#define DEBUG_TIME_LOG       1
-#define DEBUG_WATER_LEVEL_LOG 1
-#define DEBUG_CONTROL_LOG    1
-```
-
-### Mist Thresholds
-
-```cpp
-constexpr float HYSTERESIS_TEMP_ON  = 32.0f;  // °C — เปิด mist
-constexpr float HYSTERESIS_TEMP_OFF = 29.0f;  // °C — ปิด mist
-constexpr float HYSTERESIS_HUMIDITY_ON  = 65.0f; // %RH — เปิดเมื่อแห้งกว่า
-constexpr float HYSTERESIS_HUMIDITY_OFF = 75.0f; // %RH — ปิดเมื่อชื้นกว่า
-
-constexpr uint32_t MIST_MAX_ON_MS  = 3 * 60 * 1000; // 3 นาที
-constexpr uint32_t MIST_MIN_OFF_MS = 5 * 60 * 1000; // 5 นาที
-```
-
----
-
-## 🧪 Unit Tests
-
-ใช้ **Unity** framework ผ่าน PlatformIO
-
-```bash
-pio test
-```
-
-| Test | ครอบคลุม |
-|---|---|
-| `test_idle_resets_actuators` | IDLE mode ปิดทุก actuator + reset state |
-| `test_auto_mist_temp_hysteresis` | Hysteresis ON/dead-band/OFF ตาม temp |
-| `test_manual_overrides` | MANUAL mode ส่ง override ถูก |
-| `test_scheduled_relay_in_window` | Air pump เปิด/ปิดตาม time window |
-| `test_scheduled_relay_disabled` | schedule.enabled=false → ปิดทั้งวัน |
-| `test_scheduled_relay_multiple_windows` | หลาย window ในวันเดียว |
-
----
-
-## 🚀 Flash & Run
-
-```bash
-# 1. Clone & เปิดด้วย PlatformIO (VSCode + PlatformIO extension)
-
-# 2. Flash firmware
-pio run --target upload
-
-# 3. Flash filesystem (LittleFS: www/, schedule.json, wifi.json)
-pio run --target uploadfs
-
-# 4. Open Serial Monitor
-pio device monitor --baud 115200
-```
-
-> ⚠️ ต้อง `uploadfs` ด้วยทุกครั้งที่แก้ไขไฟล์ใน `data/`
-
-### Boot AP
-
-เมื่อ boot ครั้งแรก (หรือยังไม่มี WiFi config):
-1. เปิด WiFi → เชื่อมต่อ `SmartFarm-Setup`
-2. เปิด browser ไปที่ `http://192.168.4.1/wifi`
-3. ใส่ SSID / Password → Save → รอ reboot
-
----
-
-## 📦 Libraries (PlatformIO)
-
-| Library | เวอร์ชัน | ใช้สำหรับ |
-|---|---|---|
-| `claws/BH1750` | ^1.3.0 | เซนเซอร์แสง |
-| `adafruit/RTClib` | ^2.1.1 | RTC DS3231 |
-| `bblanchon/ArduinoJson` | ^7.0.0 | JSON schedule, WiFi config, API |
-| `adafruit/Adafruit SHT4x Library` | ^1.0.4 | Temp/Humidity sensor |
-| `adafruit/Adafruit Unified Sensor` | ^1.1.14 | Sensor abstraction |
-| `paulstoffregen/OneWire` | ^2.3.8 | 1-Wire bus |
-| `milesburton/DallasTemperature` | ^3.11.0 | DS18B20 water temp |
-
----
-
-## 🗺️ Roadmap — แนะนำสิ่งที่ควรทำต่อ
-
-### Phase 2 — ใกล้ๆ นี้ (High Value)
-
-1. **Water Pump AUTO Logic**
-   - ใช้ Water Level sensor ตรวจน้ำในถัง
-   - เปิด pump เมื่อน้ำต่ำกว่า threshold, ปิดเมื่อเต็ม
-   - เพิ่ม pump runtime guard (เหมือน MistGuard)
-
-2. **Water Level + Water Temp บน Dashboard**
-   - State มีพร้อมแล้วใน `SharedState`
-   - เพิ่ม card ใน `dashboard.html` และ field ใน `/api/status`
-
-3. **Schedule Edit ผ่าน Web**
-   - `GET /api/schedule` — อ่าน schedule ปัจจุบัน
-   - `POST /api/schedule` — บันทึก schedule ลง LittleFS โดยไม่ต้อง reboot
-   - เพิ่ม UI บน Dashboard
-
-### Phase 3 — Medium Term
-
-4. **EC Sensor**
-   - Field ใน `Types.h` รองรับแล้ว (`ec` field)
-   - ต้องเพิ่ม driver + ต่อ hardware
-
-5. **Multi-Zone (Relay ขยาย)**
-   - เพิ่ม relay channel สำหรับโซนรดน้ำหลายโซน
-   - ขยาย `FarmDecision` หรือเพิ่ม `ScheduledRelay` instance
-
-6. **Data Logging**
-   - บันทึก sensor readings ลง LittleFS (CSV/JSON)
-   - เพิ่ม `GET /api/history` สำหรับ chart บน dashboard
-
-7. **MQTT / Home Automation**
-   - Publish sensor data ไป MQTT broker (Home Assistant, Node-RED)
-   - Subscribe command topic สำหรับ remote control
-
-### Phase 4 — Long Term
-
-8. **OTA Update**
-   - Firmware update ผ่าน Web หรือ MQTT โดยไม่ต้องต่อ USB
-
-9. **Alert System**
-   - Line Notify / Telegram เมื่อน้ำต่ำ, sensor ล้มเหลว, หรือ pump ทำงานนานเกิน
-
----
-
-## 📁 โครงสร้างไฟล์
+## โครงสร้างโปรเจกต์
 
 ```
 SmartFarm_POC/
 ├── include/
-│   ├── Config.h                    ← GPIO, thresholds, feature flags ทั้งหมด
-│   ├── interfaces/                 ← ISensor, IActuator, INetwork, IClock, IUi ...
-│   ├── domain/                     ← TimeSchedule, TimeWindow (ไม่มี Arduino)
-│   ├── application/                ← FarmManager, ScheduledRelay, CommandService, FarmModels
-│   ├── drivers/                    ← Esp32Relay, Esp32Sht40, Esp32Bh1750Light ...
-│   ├── infrastructure/             ← SharedState, AppBoot, Esp32WebUi, RtcClock ...
-│   └── tasks/                      ← TaskEntrypoints.h, WebUiTask.h
+│   ├── Config.h                    # GPIO pins, timing, thresholds ทั้งหมด
+│   ├── interfaces/                 # Abstract interfaces (ISensor, IActuator, ฯลฯ)
+│   ├── domain/                     # Domain logic (TimeSchedule, TimeWindow)
+│   ├── application/                # Business logic (FarmManager, ScheduledRelay)
+│   ├── drivers/                    # Hardware drivers (ESP32-specific)
+│   ├── infrastructure/             # System glue (SharedState, AppBoot, WebUI, ฯลฯ)
+│   └── tasks/                      # FreeRTOS task entry points
 ├── src/
-│   ├── main.cpp                    ← Composition Root (wiring เท่านั้น)
-│   ├── application/
-│   ├── cli/
-│   ├── domain/
-│   ├── drivers/
-│   ├── infrastructure/
-│   └── tasks/
+│   ├── main.cpp                    # Composition Root — wire objects เข้าหากัน
+│   └── (mirrors include/ structure)
 ├── data/
-│   ├── schedule.json               ← Air pump schedule (LittleFS)
-│   ├── wifi.json                   ← WiFi credentials (LittleFS, สร้างจาก /wifi)
-│   └── www/
-│       ├── dashboard.html          ← Web UI หลัก
-│       ├── wifi.html               ← WiFi setup page
-│       └── wifi-saved.html         ← หน้าแจ้ง save สำเร็จ
+│   ├── schedule.json               # ตาราง air pump (อัปโหลดไปยัง LittleFS)
+│   ├── wifi.json                   # WiFi credentials (อัปโหลดไปยัง LittleFS)
+│   └── www/                        # Web UI (dashboard, wifi setup)
 ├── test/
-│   └── test_farmmanager.cpp        ← Unit tests (Unity)
-├── platformio.ini
-└── default_16MB.csv                ← Partition table (16MB flash)
+│   └── test_farmmanager.cpp        # Unit tests (Unity framework)
+├── default_16MB.csv                # Partition table 16MB
+└── platformio.ini
 ```
 
 ---
 
-## ⚠️ Known Issues & Notes
+## Architecture
 
-- **Water Level Sensor ปิดอยู่** (`ENABLE_WATER_LEVEL_CH1/CH2 = 0`) — เปิดเมื่อต่อเซนเซอร์จริง
-- **WebUI เริ่มหลังได้รับ IP** — lazy start ในครั้งแรก ไม่ block task อื่น
-- **WiFi STA timeout 15 วินาที** — กลับ AP mode อัตโนมัติ ไม่ค้างระบบ
-- **`millis()` rollover** — ทุก guard ใช้ `uint32_t` subtraction ปลอดภัย ณ 49.7 วัน
-- **BOOT_GUARD_MS = 10 วินาที** — AUTO mode รอ sensor stable ก่อนสั่งงาน
+ระบบออกแบบตาม **Clean Architecture** แบ่งชั้นอย่างเคร่งครัด โดยมีกฎหลักคือ **ชั้นในไม่รู้จักชั้นนอก** — Domain และ Application layer ไม่มีการ include Arduino API, driver, หรือ infrastructure ใด ๆ ทำให้สามารถทดสอบ business logic บน host ได้โดยไม่ต้องมี hardware
+
+```
+╔══════════════════════════════════════════════════════╗
+║  interfaces/  (Types.h, ISensor, IActuator, IClock…) ║  ← ชั้นในสุด
+║  ไม่มี Arduino API — compile ได้บน host/desktop     ║
+╠══════════════════════════════════════════════════════╣
+║  domain/  (TimeSchedule, TimeWindow)                 ║
+║  Pure logic — ไม่มี I/O, ไม่มี hardware              ║
+╠══════════════════════════════════════════════════════╣
+║  application/  (FarmManager, ScheduledRelay,         ║
+║                 CommandService, FarmModels)           ║
+║  Business rules — ใช้ interfaces เท่านั้น            ║
+╠══════════════════════════════════════════════════════╣
+║  drivers/                  infrastructure/           ║
+║  (Esp32Relay, Esp32Sht40,  (SharedState, RtcClock,   ║  ← ชั้นนอกสุด
+║   Esp32Bh1750Light, …)      AppBoot, Esp32WebUi, …)  ║
+╠══════════════════════════════════════════════════════╣
+║  tasks/  (inputTask, controlTask, networkTask, …)    ║
+║  main.cpp  (Composition Root)                        ║
+╚══════════════════════════════════════════════════════╝
+```
 
 ---
 
-*Last updated: March 2026 | Board: ESP32-S3-WROOM-1 N16R8 | Framework: Arduino + FreeRTOS*
+### กฎข้อบังคับของแต่ละชั้น
+
+#### ชั้น interfaces/ + Types.h — กฎเหล็กสูงสุด
+
+ไฟล์ในชั้นนี้คือสัญญากลางของระบบทั้งหมด ทุกชั้นอื่นอ้างอิงมาที่นี่ได้ แต่ที่นี่ต้องไม่อ้างอิงใคร
+
+| กฎ                                         | รายละเอียด                                                 |
+| ------------------------------------------ | ---------------------------------------------------------- |
+| ❌ ห้าม include Arduino.h                  | ทำให้ชั้นนี้ขึ้นอยู่กับ framework — ทดสอบบน host ไม่ได้    |
+| ❌ ห้าม include driver หรือ infrastructure | ทำให้ชั้นใน depend on ชั้นนอก — ผิดหลัก Clean Architecture |
+| ✅ include ได้เฉพาะ stdint.h / cstdint     | standard C++ เท่านั้น                                      |
+| ✅ ทุก interface ต้องมี virtual destructor | ป้องกัน memory leak เมื่อ delete ผ่าน pointer              |
+
+**Interfaces ที่มีในระบบ:**
+
+| Interface        | หน้าที่                                            | Implementation                   |
+| ---------------- | -------------------------------------------------- | -------------------------------- |
+| `ISensor`        | อ่านค่าเซนเซอร์ (`read()`, `begin()`)              | `Esp32Bh1750Light`, `Esp32Sht40` |
+| `IActuator`      | สั่งงาน output (`turnOn()`, `turnOff()`, `isOn()`) | `Esp32Relay`                     |
+| `IClock`         | อ่าน/ตั้งเวลา + sync NTP                           | `RtcClock`                       |
+| `INetwork`       | WiFi AP/STA management                             | `Esp32WiFiNetwork`               |
+| `IModeSource`    | อ่าน SystemMode จาก physical switch                | `Esp32ModeSwitchSource`          |
+| `INetModeSource` | อ่าน AP/STA mode จาก physical switch               | `Esp32NetModeSwitch`             |
+| `ISchedule`      | ตรวจสอบ time window (`isInWindow()`)               | `TimeSchedule`                   |
+| `IUi`            | Web UI lifecycle (`begin()`, `tick()`)             | `Esp32WebUi`                     |
+
+**Types.h — Domain types ที่ใช้ร่วมกันทั้งระบบ:**
+
+- `SystemMode` — `IDLE` / `AUTO` / `MANUAL`
+- `SensorReading` — value + isValid + timestamp
+- `SystemStatus` — snapshot ของ sensor + actuator ทั้งหมด
+- `ManualOverrides` — คำสั่ง manual จากผู้ใช้
+- `WaterLevelSensors`, `WaterTempReading`, `TimeOfDay`
+
+---
+
+#### ชั้น domain/ — Pure Logic ปลอด Hardware
+
+Domain คือ "กฎทางธุรกิจ" ที่ไม่ขึ้นกับว่าจะรันบน ESP32 หรือ PC กฎนี้เปลี่ยนเฉพาะเมื่อ "โลกความเป็นจริงของฟาร์ม" เปลี่ยน ไม่ใช่เพราะเปลี่ยน library หรือ hardware
+
+| กฎ                                                  | รายละเอียด                              |
+| --------------------------------------------------- | --------------------------------------- |
+| ❌ ห้าม include Arduino.h หรือ FreeRTOS             | domain logic ต้องทดสอบได้บน host        |
+| ❌ ห้าม include driver, infrastructure, หรือ task   | ชั้น domain ไม่รู้จักว่าตัวเองรันบนอะไร |
+| ✅ include ได้เฉพาะ interfaces/                     | ใช้ผ่าน abstraction เท่านั้น            |
+| ✅ ต้องทดสอบด้วย unit test ได้โดยไม่ต้องมี hardware | นี่คือเหตุผลหลักที่แยกชั้นนี้ออกมา      |
+
+**Classes ในชั้น domain:**
+
+- **`TimeWindow`** — โครงสร้างข้อมูล `[startMin, endMin)` ของช่วงเวลา 1 รอบ
+- **`TimeSchedule`** — รายการ `TimeWindow` สูงสุด 24 ช่วง implement `ISchedule` — เมธอด `isInWindow(minutesOfDay)` วนลูปตรวจสอบทุก window, `addWindow()` / `clear()` / `setEnabled()` ไม่มี I/O ใด ๆ
+
+---
+
+#### ชั้น application/ — Business Rules
+
+Application layer คือ "สมองของระบบ" รู้จักเฉพาะ domain types และ interfaces ไม่รู้ว่า hardware ตัวจริงคืออะไร
+
+| กฎ                                                           | รายละเอียด                                                        |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| ❌ ห้าม include driver โดยตรง                                | ใช้ผ่าน interface เท่านั้น เช่น `IActuator&` ไม่ใช่ `Esp32Relay&` |
+| ❌ ห้าม include infrastructure (SharedState, AppBoot, WebUI) | application ไม่รู้จัก threading model                             |
+| ✅ include ได้เฉพาะ interfaces/ และ domain/                  |                                                                   |
+| ✅ ทุก dependency ต้อง inject เข้ามา (DI)                    | ไม่มี global state ภายใน class                                    |
+| ✅ ทดสอบได้ด้วย mock objects                                 | แทน hardware ด้วย `MockActuator` ใน unit test                     |
+
+**Classes ในชั้น application:**
+
+**`FarmManager`** — ตัดสินใจเรื่อง water pump และ mist system
+
+- รับ `FarmInput` (mode, sensor values, manual overrides) คืน `FarmDecision` (pumpOn, mistOn)
+- ไม่รู้จัก SharedState, GPIO, หรือ FreeRTOS
+- state ภายใน (hysteresis latch, boot guard, mist guard) เป็นของตัวเอง ไม่ใช้ global
+
+**`ScheduledRelay`** — เชื่อม `ISchedule` กับ `IActuator`
+
+- รับ `IActuator&` และ `ISchedule&` ผ่าน constructor (Dependency Injection)
+- เมธอด `update(minutesOfDay)` — ถาม schedule ว่าควรเปิดไหม แล้วสั่ง actuator
+- เพิ่ม device ใหม่ที่ทำงานตามตารางได้โดยไม่แก้ FarmManager เลย
+
+**`CommandService`** — รวม command ทุกประเภทไว้ที่เดียว
+
+- รับ `SystemContext&` — เป็น exception ที่รับ infrastructure เพราะเป็นตัวกลาง CLI/WebUI
+- แต่ละ method ทำสิ่งเดียวชัดเจน: `relayPump(bool)`, `setModeAuto()`, `netOn()`, `clockSet()`
+- ตรวจ guard ก่อนทำงาน เช่น `relayPump()` จะ ignore ถ้าไม่ได้อยู่ใน MANUAL mode
+
+**`FarmInput` / `FarmDecision`** — Data Transfer Objects
+
+- `FarmInput` — รวม sensor snapshot + mode + manual overrides ส่งให้ FarmManager
+- `FarmDecision` — ผลลัพธ์ที่ FarmManager ตัดสินใจ (pumpOn, mistOn เท่านั้น — airOn ถูกตัดออก เพราะ ScheduledRelay เป็นเจ้าของ)
+
+---
+
+#### ชั้น drivers/ — Hardware Abstraction
+
+Driver คือ "ล่ามระหว่าง interface กับ hardware จริง" แต่ละ driver implement interface ที่ตรงกัน
+
+| กฎ                                              | รายละเอียด                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------- |
+| ✅ ต้อง implement interface ที่ตรงกันเสมอ       | `Esp32Relay` implement `IActuator`, `Esp32Sht40` implement `ISensor` |
+| ❌ ห้าม call `Wire.begin()` ใน driver           | I2C init เป็นหน้าที่ของ `AppBoot::initI2C()` เท่านั้น                |
+| ✅ อ่านค่า config จาก Config.h ได้              | เช่น `RELAY_ACTIVE_LOW`, `WATER_LEVEL_ALARM_LOW`                     |
+| ✅ มี `begin()` สำหรับ init resource ครั้งเดียว | เรียกจาก `AppBoot::initDrivers()`                                    |
+| ❌ ห้ามมี business logic                        | driver ทำแค่ "แปลง interface call เป็น GPIO/I2C/1-Wire"              |
+
+**Drivers ที่มีในระบบ:**
+
+| Driver                 | Implements       | Protocol | หมายเหตุ                                              |
+| ---------------------- | ---------------- | -------- | ----------------------------------------------------- |
+| `Esp32Relay`           | `IActuator`      | GPIO     | แปลง active HIGH/LOW ตาม `RELAY_ACTIVE_LOW` อัตโนมัติ |
+| `Esp32Bh1750Light`     | `ISensor`        | I2C      | คืน lux เป็น `SensorReading`                          |
+| `Esp32Sht40`           | `ISensor`        | I2C      | temp ผ่าน `read()`, humidity ผ่าน `getLastHumidity()` |
+| `Esp32Ds18b20`         | — (raw)          | 1-Wire   | รองรับหลาย sensor บน bus เดียว                        |
+| `Esp32WaterLevelInput` | — (raw)          | Digital  | normalize ขั้ว `WATER_LEVEL_ALARM_LOW` อัตโนมัติ      |
+| `Esp32ManualSwitch`    | — (raw)          | Digital  | INPUT_PULLUP + debounce                               |
+| `Esp32NetModeSwitch`   | `INetModeSource` | Digital  | INPUT_PULLUP + debounce                               |
+| `RtcDs3231Time`        | — (raw)          | I2C      | อ่าน/เขียนเวลากับ DS3231                              |
+
+---
+
+#### ชั้น infrastructure/ — System Glue
+
+Infrastructure คือ "กาวที่ประกอบทุกอย่างเข้าด้วยกัน" รู้จักทุกชั้น แต่ถูกรู้จักจากน้อยที่สุด
+
+| กฎ                                                       | รายละเอียด                                                              |
+| -------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ✅ include ได้จากทุกชั้น                                 | infrastructure เห็นทุกอย่าง                                             |
+| ❌ ห้าม business logic ใน AppBoot                        | AppBoot ทำแค่ init และ wire — ไม่ตัดสินใจเรื่อง pump หรือ sensor        |
+| ✅ SharedState เป็น single source of truth ระหว่าง tasks | ทุก task อ่าน/เขียนผ่าน SharedState เท่านั้น                            |
+| ❌ ห้าม task คุยกันโดยตรง                                | ห้าม pass pointer ของ task หนึ่งให้อีก task หนึ่งโดยไม่ผ่าน SharedState |
+
+**Classes หลักในชั้น infrastructure:**
+
+**`SharedState`** — Thread-safe state ระหว่าง FreeRTOS tasks
+
+- ป้องกัน race condition ด้วย `SemaphoreHandle_t _mutex`
+- Pattern การเขียน: แต่ละ task มีหน้าที่ชัดเจน — `inputTask` เขียน sensor, `controlTask` เขียน actuator state, `commandTask`/WebUI เขียน command
+- **Pending Request Pattern** — ผู้ส่งเรียก `request*()` set pending=true, ผู้รับเรียก `consume*()` copy + clear ใน call เดียว ป้องกันการประมวลผลซ้ำ
+
+**`SystemContext`** — Object graph holder ส่งเข้า FreeRTOS task แทน global variable
+
+- เป็น struct ธรรมดา ไม่มี method — ทำหน้าที่แค่รวม pointer ทุกตัวไว้ด้วยกัน
+- สร้างใน `main.cpp` และส่งเป็น `void*` ผ่าน `xTaskCreatePinnedToCore`
+
+**`AppBoot`** — Orchestrator การ boot
+
+- ลำดับ init สำคัญมาก — `initRelayPins()` ต้องก่อน `initDrivers()` เสมอ (ป้องกัน boot glitch)
+- ไม่มี logic อื่น — เรียก init function ตามลำดับแล้ว start tasks
+
+**`RtcClock`** — Facade ครอบ `RtcDs3231Time` + `NetTimeSync`
+
+- implement `IClock` ให้ application layer ใช้งานโดยไม่รู้ว่าข้างในเป็น DS3231
+
+**`Esp32WebUi`** — Web server + REST API
+
+- Lazy start — server.begin() เมื่อมี IP address เท่านั้น
+- ใช้ `WebUiTask` เรียก `tick()` แยก core เพื่อไม่บล็อก sensor/control tasks
+
+---
+
+#### ชั้น tasks/ + main.cpp — Wiring & Runtime
+
+| กฎ                                      | รายละเอียด                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| ❌ ห้าม business logic ใน main.cpp      | main.cpp ทำแค่สร้าง object และ wire — ไม่ตัดสินใจเรื่อง sensor หรือ pump |
+| ❌ ห้าม task คุยกันโดยตรง               | ทุกการสื่อสารผ่าน SharedState เท่านั้น                                   |
+| ✅ แต่ละ task มีหน้าที่เดียว            | inputTask อ่านเท่านั้น, controlTask ตัดสินใจ+สั่งเท่านั้น                |
+| ✅ task ใช้ `SystemContext*` แทน global | ทดสอบได้ง่าย เปลี่ยน dependency ได้โดยไม่แก้ task                        |
+
+**Data flow ระหว่าง tasks:**
+
+```
+inputTask ──write──▶ SharedState ◀──read── controlTask ──write──▶ SharedState
+                         ▲                      │
+              read/write │                      ▼
+          commandTask / webUiTask            hardware
+          (CLI / Web API)                  (relay GPIO)
+                         ▲
+              read/write │
+                   networkTask
+                  (WiFi state)
+```
+
+---
+
+### สรุปกฎทิศทาง Dependency
+
+```
+main.cpp / tasks
+    ↓ ใช้
+infrastructure / drivers
+    ↓ implement
+interfaces
+    ↑ ใช้
+application / domain
+```
+
+**ทิศทางที่ต้องห้ามเด็ดขาด:**
+
+- ❌ `domain` → `drivers` หรือ `infrastructure`
+- ❌ `application` → `Esp32Relay` (ต้องผ่าน `IActuator`)
+- ❌ `interfaces/Types.h` → Arduino.h
+- ❌ task หนึ่ง → task อื่นโดยตรง (ต้องผ่าน SharedState)
+
+---
+
+## การทำงานของระบบ (Tasks)
+
+ระบบใช้ **FreeRTOS** ทำงานบน 5 tasks:
+
+| Task          | Core | Priority | หน้าที่                                         | Interval         |
+| ------------- | ---- | -------- | ----------------------------------------------- | ---------------- |
+| `inputTask`   | 1    | 1        | อ่าน sensor + switch ทุกรอบ → เขียน SharedState | 1,000 ms         |
+| `controlTask` | 1    | 2        | อ่าน SharedState → FarmManager → สั่ง actuator  | 1,000 ms         |
+| `commandTask` | 0    | 1        | รับ Serial CLI command                          | 50 ms            |
+| `networkTask` | 0    | 1        | จัดการ WiFi STA/AP state machine                | 20 ms            |
+| `webUiTask`   | 1    | 1        | serve Web UI (lazy start เมื่อมี IP)            | ตาม handleClient |
+
+### ลำดับ Boot (AppBoot::setup)
+
+1. `initRelayPins()` — ตั้ง relay เป็น inactive ก่อน (ป้องกัน boot glitch)
+2. `initI2C()`
+3. `initFileSystemAndSchedule()` — mount LittleFS + โหลด `schedule.json`
+4. `initModeSource()` / `initNetModeSource()`
+5. `initClock()` — RTC DS3231
+6. `initDrivers()` — sensor + actuator ทุกตัว
+7. `initNetwork()` — WiFi begin
+8. `setInitialSafeState()` — mode = IDLE
+9. `startTasks()` — สร้าง FreeRTOS tasks
+
+---
+
+## Sensors & Actuators
+
+### Sensors
+
+| Sensor      | Driver                 | Interface | หมายเหตุ                   |
+| ----------- | ---------------------- | --------- | -------------------------- |
+| **BH1750**  | `Esp32Bh1750Light`     | I2C       | ความเข้มแสง (lux)          |
+| **SHT40**   | `Esp32Sht40`           | I2C       | อุณหภูมิ + ความชื้น        |
+| **DS18B20** | `Esp32Ds18b20`         | 1-Wire    | อุณหภูมิน้ำ (สูงสุด 4 ตัว) |
+| **XKC-Y25** | `Esp32WaterLevelInput` | Digital   | ระดับน้ำ 2 ช่อง (CH1, CH2) |
+| **DS3231**  | `RtcDs3231Time`        | I2C       | Real-time clock            |
+
+### Actuators
+
+| Actuator    | Driver       | GPIO |
+| ----------- | ------------ | ---- |
+| Water Pump  | `Esp32Relay` | 38   |
+| Mist System | `Esp32Relay` | 40   |
+| Air Pump    | `Esp32Relay` | 41   |
+
+### Switches
+
+| Switch      | Driver                  | GPIO | หน้าที่                      |
+| ----------- | ----------------------- | ---- | ---------------------------- |
+| Manual Pump | `Esp32ManualSwitch`     | 18   | สั่ง pump ใน MANUAL mode     |
+| Manual Mist | `Esp32ManualSwitch`     | 5    | สั่ง mist ใน MANUAL mode     |
+| Manual Air  | `Esp32ManualSwitch`     | 15   | สั่ง air pump ใน MANUAL mode |
+| Mode A/B    | `Esp32ModeSwitchSource` | 6, 7 | เลือก AUTO / MANUAL / IDLE   |
+| Net Switch  | `Esp32NetModeSwitch`    | 39   | เลือก AP / STA mode          |
+
+---
+
+## GPIO Pin Map
+
+```
+I2C Bus
+  SDA  = GPIO 8
+  SCL  = GPIO 9
+
+1-Wire
+  DATA = GPIO 4   (DS18B20, ต้องมี pull-up 4.7kΩ)
+
+Relay Outputs (Active LOW)
+  Water Pump = GPIO 38
+  Mist       = GPIO 40
+  Air Pump   = GPIO 41
+
+Manual Switches (INPUT_PULLUP, Active LOW)
+  Pump = GPIO 18
+  Mist = GPIO 5
+  Air  = GPIO 15
+
+Mode Switch
+  Mode A     = GPIO 6
+  Mode B     = GPIO 7
+  Net Switch = GPIO 39  (Input Only)
+  Reserved   = GPIO 42
+
+Water Level Sensors (XKC-Y25, INPUT_PULLUP)
+  CH1 = GPIO 1
+  CH2 = GPIO 2
+
+Water Level Alarm LEDs
+  CH1 LED = GPIO 47
+  CH2 LED = GPIO 10
+```
+
+---
+
+## Control Logic
+
+### FarmManager — Brain ของระบบ
+
+`FarmManager::update(FarmInput)` รับ input จาก SharedState และคืน `FarmDecision` ทุก 1 วินาที
+
+**ลำดับการตัดสินใจ:**
+
+```
+mode == IDLE   → ปิดทุกอย่าง, reset state
+mode == MANUAL → ทำตาม ManualOverrides
+mode == AUTO   → applyAuto() ด้านล่าง
+```
+
+### Mist System — AUTO Logic
+
+```
+1. Boot Guard (10 วินาที) → ปิด mist ก่อนเสมอ
+2. คำนวณ sensorWantsOn:
+   - มีทั้ง temp และ hum → decideMistByTempAndHumidity()
+   - มีแค่ hum             → decideMistByHumidity()
+   - มีแค่ temp            → decideMistByTemp()
+3. Confirmation Counter (ป้องกัน spike)
+   - ต้องเห็นสัญญาณเดิม ≥ 3 รอบติดต่อกัน
+4. MistGuard (time guard)
+   - เปิดได้สูงสุด 3 นาที (MIST_MAX_ON_MS)
+   - พักอย่างน้อย 10 นาที (MIST_MIN_OFF_MS)
+```
+
+### Hysteresis Thresholds
+
+| Parameter | ON เมื่อ | OFF เมื่อ |
+| --------- | -------- | --------- |
+| อุณหภูมิ  | ≥ 32 °C  | ≤ 29 °C   |
+| ความชื้น  | ≤ 65 %RH | ≥ 75 %RH  |
+
+> **Dead-band:** ค่าระหว่างเส้น ON/OFF → คงสถานะเดิม (hysteresis latch)
+
+### Water Pump — AUTO Logic
+
+ยังไม่ implement — อยู่ใน TODO
+
+### Air Pump — Schedule-based
+
+แยกออกจาก FarmManager — จัดการโดย `ScheduledRelay` ตาม `schedule.json`
+
+---
+
+## Web UI & API
+
+Web server ทำงานบน port 80 (lazy start — เริ่มเมื่อมี IP address)
+
+### Pages
+
+| URL           | หน้าที่                                             |
+| ------------- | --------------------------------------------------- |
+| `/`           | Dashboard แสดงสถานะ sensor + actuator แบบ real-time |
+| `/wifi`       | ตั้งค่า WiFi (SSID / Password)                      |
+| `/wifi-saved` | หน้ายืนยันหลังบันทึก WiFi                           |
+
+### REST API
+
+| Method | Endpoint      | หน้าที่                               |
+| ------ | ------------- | ------------------------------------- |
+| GET    | `/api/status` | JSON สถานะระบบทั้งหมด                 |
+| POST   | `/api/mode`   | เปลี่ยน mode (`auto`/`manual`/`idle`) |
+| POST   | `/api/relay`  | สั่ง relay (MANUAL mode เท่านั้น)     |
+| POST   | `/api/net`    | สั่ง network (`on`/`off`/`ntp`)       |
+| POST   | `/api/time`   | ตั้งเวลา RTC (`HH:MM[:SS]`)           |
+| POST   | `/api/wifi`   | บันทึก WiFi config + restart          |
+
+### Network Modes
+
+ระบบ boot เข้า **AP mode** เสมอ (offline-first):
+
+- **AP** → `192.168.4.1` (hotspot ชื่อ `smartfarm`)
+- **STA** → เชื่อม WiFi ที่บันทึกไว้ (AP ยังทำงานควบคู่)
+- Timeout STA 15 วินาที → fallback กลับ AP
+
+---
+
+## Serial CLI
+
+Baud rate: **115200**  
+Prefix: **`sm`**
+
+```
+sm help                     แสดง command ทั้งหมด
+sm status                   แสดงสถานะระบบ
+
+sm mode auto                เปลี่ยนเป็น AUTO mode
+sm mode manual              เปลี่ยนเป็น MANUAL mode
+sm mode idle                เปลี่ยนเป็น IDLE mode
+
+sm relay pump on|off        สั่ง water pump (MANUAL mode เท่านั้น)
+sm relay mist on|off        สั่ง mist system (MANUAL mode เท่านั้น)
+sm relay air  on|off        สั่ง air pump (MANUAL mode เท่านั้น)
+
+sm net on                   เชื่อม WiFi (STA mode)
+sm net off                  ตัด WiFi กลับ AP-only
+sm net ntp                  sync เวลาจาก NTP (ต้อง STA connected)
+
+sm clock set HH:MM          ตั้งเวลา RTC
+sm clock set HH:MM:SS       ตั้งเวลา RTC (ระบุวินาที)
+
+sm clear                    ล้าง manual overrides
+```
+
+---
+
+## Network & WiFi
+
+### บันทึก WiFi Credentials
+
+1. เปิด browser → `http://192.168.4.1/wifi`
+2. กรอก SSID และ Password → Save
+3. บอร์ด restart อัตโนมัติ
+4. สลับ Net Switch → STA หรือใช้ `sm net on` เพื่อเชื่อม
+
+### NTP Sync
+
+```bash
+sm net on       # เชื่อม WiFi ก่อน
+sm net ntp      # sync เวลาจาก pool.ntp.org (UTC+7)
+```
+
+---
+
+## Air Pump Schedule
+
+แก้ไขไฟล์ `data/schedule.json` แล้วอัปโหลดด้วย `pio run --target uploadfs`
+
+```json
+{
+   "air_pump": {
+      "enabled": true,
+      "windows": [
+         { "start": "07:00", "end": "08:00" },
+         { "start": "09:00", "end": "10:00" },
+         { "start": "11:00", "end": "12:00" }
+      ]
+   }
+}
+```
+
+- กำหนด time window ได้หลายช่วงต่อวัน
+- ตั้ง `"enabled": false` เพื่อหยุดการทำงานทั้งหมดโดยไม่ต้องลบ schedule
+
+---
+
+## การติดตั้งและ Build
+
+### Requirements
+
+- [PlatformIO](https://platformio.org/) (VS Code extension หรือ CLI)
+- ESP32-S3-DevKitC-1 (N16R8)
+- USB cable (data)
+
+### Build & Upload
+
+```bash
+# Build firmware
+pio run
+
+# Upload firmware
+pio run --target upload
+
+# Upload filesystem (Web UI + schedule.json + wifi.json)
+pio run --target uploadfs
+
+# Serial monitor
+pio device monitor
+```
+
+### ครั้งแรก (First Boot)
+
+1. `pio run --target uploadfs` — อัปโหลด LittleFS ก่อน
+2. `pio run --target upload` — อัปโหลด firmware
+3. เปิด Serial Monitor → รอ `🚀 SmartFarm System: Ready.`
+4. เชื่อม WiFi `smartfarm` → ตั้งค่าผ่าน `http://192.168.4.1/wifi`
+
+---
+
+## Configuration
+
+ตั้งค่าทั้งหมดอยู่ใน **`include/Config.h`** — แก้ไขแล้วคอมไพล์ใหม่:
+
+| Section           | สิ่งที่ตั้งได้                        |
+| ----------------- | ------------------------------------- |
+| I2C               | SDA/SCL pins                          |
+| 1-Wire            | DATA pin, จำนวน DS18B20 สูงสุด        |
+| Relay             | Active HIGH/LOW, GPIO pins            |
+| Manual Switches   | GPIO pins                             |
+| Mode/Net Switches | GPIO pins                             |
+| Water Level       | GPIO pins, alarm logic                |
+| Alarm LEDs        | GPIO pins, active logic               |
+| Debounce          | ปุ่ม, net switch                      |
+| NTP               | server, timezone (UTC+7)              |
+| Mist Thresholds   | temp/humidity ON/OFF                  |
+| Mist Time Guard   | max ON duration, min OFF duration     |
+| Mist Confirmation | รอบที่ต้องยืนยันก่อนเปิด/ปิด          |
+| Task Config       | stack size, interval, baud rate       |
+| Boot Guard        | delay หลัง boot ก่อนเริ่ม AUTO        |
+| Feature Flags     | เปิด/ปิด water level sensor แต่ละช่อง |
+| Debug Logs        | เปิด/ปิด log แต่ละ module             |
+
+---
+
+## Unit Tests
+
+ใช้ **Unity** framework ทดสอบ FarmManager และ ScheduledRelay โดยไม่ต้องมี hardware
+
+```bash
+# รัน test บน device
+pio test
+```
+
+### Test ที่มี
+
+- `test_idle_resets_actuators` — IDLE ต้องปิดทุกอย่างและ reset state
+- `test_auto_mist_temp_hysteresis` — hysteresis ทำงานถูกต้อง
+- `test_manual_mode_direct_control` — MANUAL mode ทำตาม override โดยตรง
+- `test_scheduled_relay_*` — ScheduledRelay ทำงานตาม time window
+
+---
+
+## สิ่งที่ยังไม่ implement (TODO)
+
+- **Water pump AUTO logic** — ปัจจุบัน `pumpOn = false` เสมอใน AUTO mode
+- **EC Sensor** — มี field `ec` ใน SystemStatus แต่ยังไม่มี driver
+- **Water level → pump interlock** — หยุดปั๊มเมื่อน้ำต่ำ
+- **OTA Update** — อัปเดต firmware ผ่าน WiFi
+- **Logging / History** — บันทึกค่า sensor ย้อนหลัง
+
+---
+
+## Libraries
+
+| Library                          | Version | หน้าที่               |
+| -------------------------------- | ------- | --------------------- |
+| claws/BH1750                     | ^1.3.0  | Light sensor          |
+| adafruit/RTClib                  | ^2.1.1  | DS3231 RTC            |
+| bblanchon/ArduinoJson            | ^7.0.0  | JSON parsing/building |
+| adafruit/Adafruit SHT4x          | ^1.0.4  | Temp/Humidity sensor  |
+| adafruit/Adafruit Unified Sensor | ^1.1.14 | Sensor abstraction    |
+| paulstoffregen/OneWire           | ^2.3.8  | 1-Wire protocol       |
+| milesburton/DallasTemperature    | ^3.11.0 | DS18B20               |
